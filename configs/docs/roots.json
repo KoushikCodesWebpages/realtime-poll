@@ -1,0 +1,14 @@
+{
+  "name": "Real-Time Poll Rooms API",
+  "status": "running",
+  "description": "Create polls, share links, vote in real-time via websocket",
+  "endpoints": {
+    "create_poll": "POST /poll",
+    "vote": "POST /poll/:id/vote",
+    "realtime": "GET /ws/:id (websocket)",
+    "health": "GET /health"
+  },
+  "example": {
+    "create": "curl -X POST http://localhost:8080/poll -H \"Content-Type: application/json\" -d '{\"question\":\"Best language?\",\"options\":[\"Go\",\"Rust\",\"Java\"]}'"
+  }
+}

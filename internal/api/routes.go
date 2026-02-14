@@ -1,0 +1,31 @@
+package api
+
+import (
+	"realtime-poll/internal/ws"
+	"realtime-poll/internal/utils"
+
+	"github.com/gin-gonic/gin"
+)
+func RegisterRoutes(r *gin.Engine) {
+
+	// Root info
+	r.GET("/", func(c *gin.Context) {
+		c.JSON(200, utils.GetRootDoc())
+	})
+
+
+	// Health check
+	r.GET("/health", func(c *gin.Context) {
+		c.JSON(200, gin.H{"status": "ok"})
+	})
+
+	// Poll APIs
+	poll := r.Group("/poll")
+	{
+		poll.POST("", CreatePoll)
+		poll.POST("/:id/vote", Vote)
+	}
+
+	// Websocket
+	r.GET("/ws/:id", ws.HandleWS)
+}
