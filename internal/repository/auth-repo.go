@@ -15,9 +15,7 @@ func userCol() *mongo.Collection {
 	return db.DB.Collection("users")
 }
 
-func sessionCol() *mongo.Collection {
-	return db.DB.Collection("sessions")
-}
+
 
 func CreateUser(u models.User) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -25,6 +23,23 @@ func CreateUser(u models.User) error {
 
 	_, err := userCol().InsertOne(ctx, u)
 	return err
+}
+
+func FindUserByEmail(email string) (*models.User, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var user models.User
+	err := userCol().FindOne(ctx, bson.M{"email": email}).Decode(&user)
+
+	if err == mongo.ErrNoDocuments {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return &user, nil
 }
 
 func FindUserByUsername(username string) (*models.User, error) {
@@ -60,26 +75,16 @@ func FindUserByIdentifier(identifier string) (*models.User, error) {
 	return &user, err
 }
 
-func CreateSession(s models.Session) error {
+
+func FindUserByID(id string) (*models.User, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	_, err := sessionCol().InsertOne(ctx, s)
-	return err
+	var user models.User
+	err := userCol().FindOne(ctx, bson.M{"auth_user_id": id}).Decode(&user)
+	if err == mongo.ErrNoDocuments {
+		return nil, nil
+	}
+	return &user, err
 }
 
-func GetSession(id string) (*models.Session, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	var s models.Session
-	err := sessionCol().FindOne(ctx, bson.M{"_id": id}).Decode(&s)
-	return &s, err
-}
-
-func DeleteSession(id string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	sessionCol().DeleteOne(ctx, bson.M{"_id": id})
-}

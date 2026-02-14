@@ -3,6 +3,7 @@ package api
 import (
 	"realtime-poll/internal/ws"
 	"realtime-poll/internal/utils"
+	"realtime-poll/internal/middleware"
 
 	"github.com/gin-gonic/gin"
 )
@@ -30,11 +31,11 @@ func RegisterRoutes(r *gin.Engine) {
 		}
 
 		// Poll APIs
-		poll := api.Group("/poll")
-		{
-			poll.POST("", CreatePoll)
-			poll.POST("/:id/vote", Vote)
-		}
+	poll := api.Group("/poll")
+	{
+		poll.POST("", middleware.RequireAuth(), CreatePoll) // protected
+		poll.POST("/:id/vote", Vote) // public
+	}
 
 		// Websocket
 		api.GET("/ws/:id", ws.HandleWS)

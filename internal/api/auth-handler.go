@@ -35,6 +35,7 @@ func Register(c *gin.Context) {
 
 	c.JSON(200, gin.H{"status": "registered"})
 }
+
 func Login(c *gin.Context) {
 
 	var req LoginReq
@@ -53,7 +54,7 @@ func Login(c *gin.Context) {
 
 	c.SetCookie(
 		"session_id",
-		session.ID,
+		session.SessionID,
 		86400,  // 24h
 		"/",
 		"",

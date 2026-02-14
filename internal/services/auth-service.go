@@ -10,15 +10,27 @@ import (
 	"realtime-poll/internal/utils"
 )
 
+var ErrEmailExists = errors.New("email already exists")
 var ErrInvalidCredentials = errors.New("invalid credentials")
 var ErrUserExists = errors.New("username already exists")
-
 func Register(username, email, password string) error {
 
-	// check existing user
-	existing, _ := repository.FindUserByUsername(username)
-	if existing != nil {
+	// username check
+	existingUser, err := repository.FindUserByUsername(username)
+	if err != nil {
+		return err
+	}
+	if existingUser != nil {
 		return ErrUserExists
+	}
+
+	// email check
+	existingEmail, err := repository.FindUserByEmail(email)
+	if err != nil {
+		return err
+	}
+	if existingEmail != nil {
+		return ErrEmailExists
 	}
 
 	hash, err := utils.HashPassword(password)
@@ -27,7 +39,7 @@ func Register(username, email, password string) error {
 	}
 
 	user := models.User{
-		ID:           uuid.NewString(),
+		AuthUserID:   uuid.NewString(),
 		Username:     username,
 		Email:        email,
 		PasswordHash: hash,
@@ -36,6 +48,7 @@ func Register(username, email, password string) error {
 
 	return repository.CreateUser(user)
 }
+
 
 func Login(identifier, password string) (*models.Session, error) {
 
@@ -49,8 +62,8 @@ func Login(identifier, password string) (*models.Session, error) {
 	}
 
 	session := models.Session{
-		ID:        uuid.NewString(),
-		UserID:    user.ID,
+		SessionID:        uuid.NewString(),
+		UserID:    user.AuthUserID,
 		CreatedAt: time.Now(),
 		ExpiresAt: time.Now().Add(24 * time.Hour),
 	}

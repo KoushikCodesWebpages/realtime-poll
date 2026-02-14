@@ -13,13 +13,16 @@ type CreatePollReq struct {
 }
 
 // func CreatePoll(c *gin.Context) {
-// 	var req CreatePollReq
+
+// 	userID := c.GetString("user_id") // set by auth middleware
+
+// 	var req models.CreatePollReq
 // 	if err := c.ShouldBindJSON(&req); err != nil {
-// 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid"})
+// 		c.JSON(400, gin.H{"error": "invalid body"})
 // 		return
 // 	}
 
-// 	poll, err := services.CreatePoll(req.Question, req.Options)
+// 	poll, err := services.CreatePoll(userID, req.Question, req.Options)
 // 	if err != nil {
 // 		c.JSON(500, gin.H{"error": err.Error()})
 // 		return
@@ -27,6 +30,7 @@ type CreatePollReq struct {
 
 // 	c.JSON(200, poll)
 // }
+
 func CreatePoll(c *gin.Context) {
 
 	userID := c.GetString("user_id") // set by middleware

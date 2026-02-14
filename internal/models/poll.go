@@ -3,13 +3,14 @@ package models
 import "time"
 
 type Option struct {
-	ID    string `bson:"id" json:"id"`
+	OptionID    string `bson:"option_id" json:"option_id"`
 	Text  string `bson:"text" json:"text"`
 	Votes int    `bson:"votes" json:"votes"`
 }
 
 type Poll struct {
-	ID        string    `bson:"_id" json:"id"`
+	AuthUserID    string    `bson:"auth_user_id,omitempty" json:"auth_user_id"`
+	PollID        string    `bson:"poll_id" json:"poll_id"`
 	Question  string    `bson:"question" json:"question"`
 	Options   []Option  `bson:"options" json:"options"`
 	CreatedAt time.Time `bson:"created_at" json:"created_at"`
