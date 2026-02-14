@@ -1,0 +1,53 @@
+{
+  "poll": {
+    "max_options_per_poll": 10,
+    "max_question_length": 300,
+    "max_option_length": 120,
+    "allow_vote_change": false,
+    "auto_close_after_minutes": 1440,
+    "max_active_polls_per_ip": 20
+  },
+
+  "voting": {
+    "one_vote_per_fingerprint": true,
+    "ip_vote_limit": 1,
+    "cookie_vote_limit": 1,
+    "vote_cooldown_seconds": 5,
+    "reject_proxy_ips": false,
+    "store_voter_hash": true
+  },
+
+  "anti_abuse": {
+    "rapid_vote_threshold": 5,
+    "rapid_vote_window_seconds": 10,
+    "temporary_block_minutes": 10,
+    "duplicate_fingerprint_block": true,
+    "suspicious_user_agent_block": true
+  },
+
+  "websocket": {
+    "max_connections_per_room": 500,
+    "heartbeat_interval_seconds": 25,
+    "client_timeout_seconds": 60,
+    "broadcast_buffer_size": 256
+  },
+
+  "rate_limit": {
+    "create_poll_per_minute": 5,
+    "vote_per_minute_per_ip": 20,
+    "ws_connect_per_minute": 60
+  },
+
+  "storage": {
+    "store_vote_events": true,
+    "store_ip_hash_only": true,
+    "hash_salt_length": 16,
+    "prune_old_polls_hours": 72
+  },
+
+  "logging": {
+    "log_votes": true,
+    "log_connections": true,
+    "log_blocks": true
+  }
+}

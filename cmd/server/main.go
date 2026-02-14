@@ -4,20 +4,20 @@ import (
 	"log"
 	"os"
 	"io"
-
+	"realtime-poll/config"
 	"realtime-poll/internal/api"
 	"realtime-poll/internal/db"
 
 	"realtime-poll/internal/middleware"
 
 	"github.com/gin-gonic/gin"
-	"github.com/joho/godotenv"
+
 )
 
 func main() {
 
 	// Load env
-	err := godotenv.Load()
+	err := config.LoadEnv()
 	if err != nil {
 		log.Println(".env not found, using system env")
 	}
