@@ -19,6 +19,14 @@ func RegisterRoutes(r *gin.Engine) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
 
+	// Auth 
+	auth := r.Group("/auth")
+	{
+		auth.POST("/register", Register)
+		auth.POST("/login", Login)
+		auth.POST("/logout", Logout)
+	}
+
 	// Poll APIs
 	poll := r.Group("/poll")
 	{
