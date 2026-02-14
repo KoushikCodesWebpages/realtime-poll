@@ -15,3 +15,4 @@ type Poll struct {
 	CreatedAt time.Time `bson:"created_at" json:"created_at"`
 	IsClosed  bool      `bson:"is_closed" json:"is_closed"`
 }
+
