@@ -6,6 +6,7 @@ import (
 
 	"github.com/joho/godotenv"
 )
+
 func LoadEnv() error {
 
 	env := os.Getenv("APP_ENV")
