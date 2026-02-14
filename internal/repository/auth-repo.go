@@ -36,6 +36,23 @@ func FindUserByUsername(username string) (*models.User, error) {
 	return &user, err
 }
 
+func FindUserByIdentifier(identifier string) (*models.User, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var user models.User
+
+	filter := bson.M{
+		"$or": []bson.M{
+			{"username": identifier},
+			{"email": identifier},
+		},
+	}
+
+	err := userCol().FindOne(ctx, filter).Decode(&user)
+	return &user, err
+}
+
 func CreateSession(s models.Session) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

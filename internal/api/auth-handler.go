@@ -1,15 +1,24 @@
 package api
 
 import (
+	"os"
 
 	"github.com/gin-gonic/gin"
 	"realtime-poll/internal/services"
 	"realtime-poll/internal/repository"
+	// "realtime-poll/config"
 )
 
 type AuthReq struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
+	Email    string `json:"email"`
+
+}
+
+type LoginReq struct {
+	Identifier string `json:"identifier"` // username OR email
+	Password   string `json:"password"`
 }
 
 func Register(c *gin.Context) {
@@ -19,28 +28,38 @@ func Register(c *gin.Context) {
 		return
 	}
 
-	if err := services.Register(req.Username, req.Password); err != nil {
+	if err := services.Register(req.Username,req.Email, req.Password); err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
 
 	c.JSON(200, gin.H{"status": "registered"})
 }
-
 func Login(c *gin.Context) {
-	var req AuthReq
-	if c.BindJSON(&req) != nil {
-		c.JSON(400, gin.H{"error": "invalid"})
+
+	var req LoginReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(400, gin.H{"error": "invalid body"})
 		return
 	}
 
-	session, err := services.Login(req.Username, req.Password)
+	session, err := services.Login(req.Identifier, req.Password)
 	if err != nil {
 		c.JSON(401, gin.H{"error": "invalid credentials"})
 		return
 	}
 
-	c.SetCookie("session_id", session.ID, 86400, "/", "", false, true)
+	secure := os.Getenv("APP_ENV") == "prod"
+
+	c.SetCookie(
+		"session_id",
+		session.ID,
+		86400,  // 24h
+		"/",
+		"",
+		secure, // HTTPS only in prod
+		true,   // httpOnly (important)
+	)
 
 	c.JSON(200, gin.H{"status": "logged_in"})
 }

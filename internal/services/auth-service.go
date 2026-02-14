@@ -1,6 +1,7 @@
 package services
 
 import (
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -9,7 +10,16 @@ import (
 	"realtime-poll/internal/utils"
 )
 
-func Register(username, password string) error {
+var ErrInvalidCredentials = errors.New("invalid credentials")
+var ErrUserExists = errors.New("username already exists")
+
+func Register(username, email, password string) error {
+
+	// check existing user
+	existing, _ := repository.FindUserByUsername(username)
+	if existing != nil {
+		return ErrUserExists
+	}
 
 	hash, err := utils.HashPassword(password)
 	if err != nil {
@@ -19,6 +29,7 @@ func Register(username, password string) error {
 	user := models.User{
 		ID:           uuid.NewString(),
 		Username:     username,
+		Email:        email,
 		PasswordHash: hash,
 		CreatedAt:    time.Now(),
 	}
@@ -26,15 +37,15 @@ func Register(username, password string) error {
 	return repository.CreateUser(user)
 }
 
-func Login(username, password string) (*models.Session, error) {
+func Login(identifier, password string) (*models.Session, error) {
 
-	user, err := repository.FindUserByUsername(username)
-	if err != nil {
-		return nil, err
+	user, err := repository.FindUserByIdentifier(identifier)
+	if err != nil || user == nil {
+		return nil, ErrInvalidCredentials
 	}
 
 	if !utils.CheckPassword(user.PasswordHash, password) {
-		return nil, err
+		return nil, ErrInvalidCredentials
 	}
 
 	session := models.Session{
@@ -44,5 +55,9 @@ func Login(username, password string) (*models.Session, error) {
 		ExpiresAt: time.Now().Add(24 * time.Hour),
 	}
 
-	return &session, repository.CreateSession(session)
+	if err := repository.CreateSession(session); err != nil {
+		return nil, err
+	}
+
+	return &session, nil
 }
