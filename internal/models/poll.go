@@ -16,3 +16,8 @@ type Poll struct {
 	IsClosed  bool      `bson:"is_closed" json:"is_closed"`
 }
 
+type CreatePollReq struct {
+	Question string   `json:"question"`
+	Options  []string `json:"options"`
+}
+

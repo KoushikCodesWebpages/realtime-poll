@@ -1,7 +1,7 @@
 package api
 
 import (
-	"net/http"
+	// "net/http"
 	"realtime-poll/internal/services"
 
 	"github.com/gin-gonic/gin"
@@ -12,20 +12,29 @@ type CreatePollReq struct {
 	Options  []string `json:"options"`
 }
 
+// func CreatePoll(c *gin.Context) {
+// 	var req CreatePollReq
+// 	if err := c.ShouldBindJSON(&req); err != nil {
+// 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid"})
+// 		return
+// 	}
+
+// 	poll, err := services.CreatePoll(req.Question, req.Options)
+// 	if err != nil {
+// 		c.JSON(500, gin.H{"error": err.Error()})
+// 		return
+// 	}
+
+// 	c.JSON(200, poll)
+// }
 func CreatePoll(c *gin.Context) {
-	var req CreatePollReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid"})
-		return
-	}
 
-	poll, err := services.CreatePoll(req.Question, req.Options)
-	if err != nil {
-		c.JSON(500, gin.H{"error": err.Error()})
-		return
-	}
+	userID := c.GetString("user_id") // set by middleware
 
-	c.JSON(200, poll)
+	c.JSON(200, gin.H{
+		"message": "poll creation allowed",
+		"owner":   userID,
+	})
 }
 
 type VoteReq struct {

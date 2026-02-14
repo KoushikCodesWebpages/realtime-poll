@@ -33,7 +33,14 @@ func FindUserByUsername(username string) (*models.User, error) {
 
 	var user models.User
 	err := userCol().FindOne(ctx, bson.M{"username": username}).Decode(&user)
-	return &user, err
+		if err == mongo.ErrNoDocuments {
+		return nil, nil // IMPORTANT: user truly not found
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return &user, nil
 }
 
 func FindUserByIdentifier(identifier string) (*models.User, error) {
