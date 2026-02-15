@@ -36,7 +36,7 @@ func GetSession(id string) (*models.Session, error) {
 	defer cancel()
 
 	var s models.Session
-	err := sessionCol().FindOne(ctx, bson.M{"_id": id}).Decode(&s)
+	err := sessionCol().FindOne(ctx, bson.M{"session_id": id}).Decode(&s)
 
 	if err == mongo.ErrNoDocuments {
 		return nil, nil
@@ -53,5 +53,5 @@ func DeleteSession(id string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	sessionCol().DeleteOne(ctx, bson.M{"_id": id})
+	sessionCol().DeleteOne(ctx, bson.M{"session_id": id})
 }
