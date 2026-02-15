@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - dev
-      - prod
   workflow_dispatch:
 
 jobs:
@@ -15,7 +14,6 @@ jobs:
       - name: 📥 Checkout repository
         uses: actions/checkout@v4
 
-      # REQUIRED because you use RSA PRIVATE KEY
       - name: 🔐 Setup SSH key
         run: |
           mkdir -p ~/.ssh
@@ -28,7 +26,7 @@ jobs:
         with:
           host: ${{ secrets.VPS_IP }}
           username: ${{ secrets.VPS_USER }}
-          key_path: ~/.ssh/id_rsa
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 22
 
           script: |
