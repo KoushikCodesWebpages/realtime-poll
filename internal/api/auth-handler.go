@@ -64,12 +64,7 @@ func Login(c *gin.Context) {
 		MaxAge:   maxAge,
 		HttpOnly: true,
 		Secure:   secure,
-		SameSite: func() http.SameSite {
-			if secure {
-				return http.SameSiteNoneMode
-			}
-			return http.SameSiteLaxMode
-		}(),
+		SameSite:  http.SameSiteNoneMode,
 	})
 
 	c.JSON(200, gin.H{"status": "logged_in"})
@@ -91,12 +86,7 @@ func Logout(c *gin.Context) {
 		MaxAge:   -1,
 		HttpOnly: true,
 		Secure:   secure,
-		SameSite: func() http.SameSite {
-			if secure {
-				return http.SameSiteNoneMode
-			}
-			return http.SameSiteLaxMode
-		}(),
+		SameSite:  http.SameSiteNoneMode,
 	})
 
 	c.JSON(200, gin.H{"status": "logged_out"})
