@@ -34,7 +34,7 @@ func RegisterRoutes(r *gin.Engine) {
 	poll := api.Group("/poll")
 	{
 		poll.POST("", middleware.RequireAuth(), CreatePoll) // protected
-		poll.POST("/:id/vote", Vote) // public
+		// poll.POST("/:id/vote", Vote) // public
 	}
 
 		// Websocket

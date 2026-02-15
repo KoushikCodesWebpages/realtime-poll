@@ -9,15 +9,22 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 )
 
+func IsExpired(p models.Poll) bool {
+	if p.Behavior.EndAt == nil {
+		return false
+	}
+	return time.Now().After(*p.Behavior.EndAt)
+}
+
 func getCollection() *mongo.Collection {
 	return db.DB.Collection("polls")
 }
 
-func CreatePoll(p models.Poll) error {
+func CreatePoll(ctx context.Context, poll *models.Poll) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	_, err := getCollection().InsertOne(ctx, p)
+	_, err := getCollection().InsertOne(ctx, poll)
 	return err
 }
 
