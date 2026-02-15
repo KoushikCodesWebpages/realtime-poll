@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sync"
 )
 
@@ -12,19 +11,20 @@ var (
 	rootDoc  map[string]interface{}
 	loadOnce sync.Once
 )
-
 func GetRootDoc() map[string]interface{} {
 
 	loadOnce.Do(func() {
 
-		// get location of THIS source file
-		_, filename, _, _ := runtime.Caller(0)
+		execPath, err := os.Executable()
+		if err != nil {
+			rootDoc = map[string]interface{}{
+				"error": "cannot find executable",
+			}
+			return
+		}
 
-		// project root = two folders up from utils
-		base := filepath.Dir(filename)
-		root := filepath.Join(base, "..", "..")
-
-		path := filepath.Join(root, "config", "docs", "roots.json")
+		base := filepath.Dir(execPath)
+		path := filepath.Join(base, "config", "docs", "roots.json")
 
 		file, err := os.ReadFile(path)
 		if err != nil {
