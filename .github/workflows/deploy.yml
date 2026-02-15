@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - dev
+      - prod
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -13,6 +15,7 @@ jobs:
       - name: 📥 Checkout repository
         uses: actions/checkout@v4
 
+      # REQUIRED because you use RSA PRIVATE KEY
       - name: 🔐 Setup SSH key
         run: |
           mkdir -p ~/.ssh
@@ -34,7 +37,7 @@ jobs:
             APP_NAME="${{ secrets.APP_NAME }}"
             CONTAINER_NAME="${{ secrets.CONTAINER_NAME }}"
             GHCR_IMAGE="${{ secrets.GHCR_IMAGE }}"
-            GITHUB_USERNAME="${{ secrets.GH_USERNAME }}"
+            GH_USERNAME="${{ secrets.GH_USERNAME }}"
             PAT_TOKEN="${{ secrets.PAT_TOKEN }}"
             APP_PORT="${{ secrets.APP_PORT }}"
 
@@ -43,7 +46,7 @@ jobs:
             echo "📡 Port: $APP_PORT"
 
             echo "🔐 Logging into GHCR..."
-            echo "$PAT_TOKEN" | docker login ghcr.io -u "$GITHUB_USERNAME" --password-stdin
+            echo "$PAT_TOKEN" | docker login ghcr.io -u "$GH_USERNAME" --password-stdin
 
             echo "⬇️ Pulling latest image..."
             docker pull "$GHCR_IMAGE:latest"
