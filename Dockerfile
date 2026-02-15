@@ -18,7 +18,7 @@ COPY realtime-poll /app/realtime-poll
 # COPY app/templates /app/app/templates
 
 # Copy the .env file (environment configuration)
-COPY .env /app/.prod.env
+COPY .prod.env /app/.prod.env
 
 # Expose the port your app will listen on
 EXPOSE 8080
