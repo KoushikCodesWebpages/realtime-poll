@@ -13,12 +13,19 @@ jobs:
       - name: 📥 Checkout repository
         uses: actions/checkout@v4
 
-      - name: 🔐 Deploy via SSH
+      - name: 🔐 Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H "${{ secrets.VPS_IP }}" >> ~/.ssh/known_hosts
+
+      - name: 🚀 Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VPS_IP }}
           username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          key_path: ~/.ssh/id_rsa
           port: 22
 
           script: |
@@ -36,25 +43,22 @@ jobs:
             echo "📡 Port: $APP_PORT"
 
             echo "🔐 Logging into GHCR..."
-            echo "$PAT_TOKEN" | docker login ghcr.io -u "$GH_USERNAME" --password-stdin
+            echo "$PAT_TOKEN" | docker login ghcr.io -u "$GITHUB_USERNAME" --password-stdin
 
             echo "⬇️ Pulling latest image..."
-            docker pull $GHCR_IMAGE:latest
+            docker pull "$GHCR_IMAGE:latest"
 
-            echo "🛑 Stopping old container (if exists)..."
-            docker stop $CONTAINER_NAME || true
+            echo "🛑 Stopping old container..."
+            docker stop "$CONTAINER_NAME" || true
 
             echo "🗑 Removing old container..."
-            docker rm $CONTAINER_NAME || true
-
-            echo "🧹 Cleaning dangling images..."
-            docker image prune -f
+            docker rm "$CONTAINER_NAME" || true
 
             echo "🚀 Starting container..."
             docker run -d \
-              --name $CONTAINER_NAME \
-              -p $APP_PORT:$APP_PORT \
+              --name "$CONTAINER_NAME" \
+              -p "$APP_PORT:$APP_PORT" \
               --restart unless-stopped \
-              $GHCR_IMAGE:latest
+              "$GHCR_IMAGE:latest"
 
             echo "✅ Deployment finished!"
