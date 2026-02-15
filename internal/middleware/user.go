@@ -6,7 +6,7 @@ import (
 )
 
 func GetUser(c *gin.Context) (*models.User, bool) {
-	u, exists := c.Get("user")
+	u, exists := c.Get("user_id")
 	if !exists {
 		return nil, false
 	}

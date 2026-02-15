@@ -74,6 +74,16 @@ func FindUserByIdentifier(identifier string) (*models.User, error) {
 	err := userCol().FindOne(ctx, filter).Decode(&user)
 	return &user, err
 }
+func FindUserByAuthID(id string) (*models.User, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	var user models.User
+	err := userCol().FindOne(ctx, bson.M{"auth_user_id": id}).Decode(&user)
+	if err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
 
 
 func FindUserByID(id string) (*models.User, error) {

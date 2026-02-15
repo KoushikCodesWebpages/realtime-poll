@@ -9,7 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"realtime-poll/internal/services"
 	"realtime-poll/internal/repository"
-	"realtime-poll/internal/middleware"
+	"realtime-poll/internal/constants"
 	// "realtime-poll/config"
 )
 
@@ -24,6 +24,23 @@ type LoginReq struct {
 	Identifier string `json:"identifier"` // username OR email
 	Password   string `json:"password"`
 }
+func Session(c *gin.Context) {
+	uid := c.GetString(constants.CtxUserID)
+
+	user, err := repository.FindUserByAuthID(uid)
+	if err != nil || user == nil {
+		c.JSON(401, gin.H{"error": "not authenticated"})
+		return
+	}
+
+	c.JSON(200, gin.H{
+		"id": user.AuthUserID,
+		"username": user.Username,
+		"email": user.Email,
+	})
+}
+
+
 
 func Register(c *gin.Context) {
 	var req AuthReq
@@ -69,19 +86,6 @@ func Login(c *gin.Context) {
 	})
 
 	c.JSON(200, gin.H{"status": "logged_in"})
-}
-func Session(c *gin.Context) {
-	user, exists := middleware.GetUser(c)
-	if !exists {
-		c.JSON(401, gin.H{"error": "not authenticated"})
-		return
-	}
-
-	c.JSON(200, gin.H{
-		"id": user.AuthUserID,
-		"username": user.Username,
-		"email": user.Email,
-	})
 }
 
 func Logout(c *gin.Context) {

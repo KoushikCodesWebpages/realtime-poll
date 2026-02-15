@@ -9,6 +9,8 @@ import (
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
+	// "github.com/google/uuid"
+
 )
 
 func sessionCol() *mongo.Collection {
@@ -32,20 +34,28 @@ func CreateSession(s models.Session) error {
 
 
 func GetSession(id string) (*models.Session, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+defer cancel()
 
-	var s models.Session
-	err := sessionCol().FindOne(ctx, bson.M{"session_id": id}).Decode(&s)
+var s models.Session
 
-	if err == mongo.ErrNoDocuments {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
+err := sessionCol().FindOne(ctx, bson.M{"_id": id}).Decode(&s)
 
-	return &s, nil
+if err == mongo.ErrNoDocuments {
+	return nil, nil
+}
+if err != nil {
+	return nil, err
+}
+
+// expiry check (UTC safe)
+if time.Now().UTC().After(s.ExpiresAt.UTC()) {
+	return nil, nil
+}
+
+return &s, nil
+
+
 }
 
 
@@ -53,5 +63,5 @@ func DeleteSession(id string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	sessionCol().DeleteOne(ctx, bson.M{"session_id": id})
+	sessionCol().DeleteOne(ctx, bson.M{"_id": id})
 }
