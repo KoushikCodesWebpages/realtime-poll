@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - dev
-      - main
 
 jobs:
   deploy:
@@ -28,7 +27,7 @@ jobs:
             APP_NAME="${{ secrets.APP_NAME }}"
             CONTAINER_NAME="${{ secrets.CONTAINER_NAME }}"
             GHCR_IMAGE="${{ secrets.GHCR_IMAGE }}"
-            GITHUB_USERNAME="${{ secrets.GITHUB_USERNAME }}"
+            GITHUB_USERNAME="${{ secrets.GH_USERNAME }}"
             PAT_TOKEN="${{ secrets.PAT_TOKEN }}"
             APP_PORT="${{ secrets.APP_PORT }}"
 
@@ -37,7 +36,7 @@ jobs:
             echo "📡 Port: $APP_PORT"
 
             echo "🔐 Logging into GHCR..."
-            echo "$PAT_TOKEN" | docker login ghcr.io -u "$GITHUB_USERNAME" --password-stdin
+            echo "$PAT_TOKEN" | docker login ghcr.io -u "$GH_USERNAME" --password-stdin
 
             echo "⬇️ Pulling latest image..."
             docker pull $GHCR_IMAGE:latest
