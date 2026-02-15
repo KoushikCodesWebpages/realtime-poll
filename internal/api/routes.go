@@ -36,13 +36,14 @@ func RegisterRoutes(r *gin.Engine) {
 		{
 			poll.POST("/",CreatePoll) // protected
 			poll.GET("/mine", GetMyPolls)
+			poll.GET("/:poll_id", GetPoll)
 
-				poll.PUT("/:poll_id", PutPoll)
-				poll.PATCH("/:poll_id", PatchPoll)
+			poll.PUT("/:poll_id", PutPoll)
+			poll.PATCH("/:poll_id", PatchPoll)
 
-				poll.DELETE("/:poll_id",DeletePoll)
+			poll.DELETE("/:poll_id",DeletePoll)
 
-				poll.POST("/:poll_id/share",GenerateShareLink)
+			poll.POST("/:poll_id/share",GenerateShareLink)
 			
 		}
 

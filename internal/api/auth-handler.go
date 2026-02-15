@@ -65,28 +65,35 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	session, err := services.Login(req.Identifier, req.Password)
+	result, err := services.Login(req.Identifier, req.Password)
 	if err != nil {
 		c.JSON(401, gin.H{"error": "invalid credentials"})
 		return
 	}
 
 	secure := os.Getenv("APP_ENV") == "prod"
-
-	maxAge := int(time.Until(session.ExpiresAt).Seconds())
+	maxAge := int(time.Until(result.Session.ExpiresAt).Seconds())
 
 	http.SetCookie(c.Writer, &http.Cookie{
 		Name:     "session_id",
-		Value:    session.SessionID,   // <-- important
+		Value:    result.Session.SessionID,
 		Path:     "/",
 		MaxAge:   maxAge,
 		HttpOnly: true,
 		Secure:   secure,
-		SameSite:  http.SameSiteNoneMode,
+		SameSite: http.SameSiteNoneMode,
 	})
 
-	c.JSON(200, gin.H{"status": "logged_in"})
+	c.JSON(200, gin.H{
+		"status": "logged_in",
+		"user": gin.H{
+			"id":       result.User.AuthUserID,
+			"username": result.User.Username,
+			"email":    result.User.Email,
+		},
+	})
 }
+
 
 func Logout(c *gin.Context) {
 

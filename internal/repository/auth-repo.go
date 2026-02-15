@@ -62,8 +62,6 @@ func FindUserByIdentifier(identifier string) (*models.User, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	var user models.User
-
 	filter := bson.M{
 		"$or": []bson.M{
 			{"username": identifier},
@@ -71,9 +69,18 @@ func FindUserByIdentifier(identifier string) (*models.User, error) {
 		},
 	}
 
+	var user models.User
 	err := userCol().FindOne(ctx, filter).Decode(&user)
-	return &user, err
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return &user, nil
 }
+
 func FindUserByAuthID(id string) (*models.User, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

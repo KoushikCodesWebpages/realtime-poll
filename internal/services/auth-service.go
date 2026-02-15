@@ -49,28 +49,55 @@ func Register(username, email, password string) error {
 	return repository.CreateUser(user)
 }
 
+type LoginResult struct {
+	Session *models.Session
+	User    *models.User
+}
 
-func Login(identifier, password string) (*models.Session, error) {
+func Login(identifier, password string) (*LoginResult, error) {
 
 	user, err := repository.FindUserByIdentifier(identifier)
 	if err != nil || user == nil {
+		println("LOGIN FAIL: user not found for", identifier)
 		return nil, ErrInvalidCredentials
 	}
 
-	if !utils.CheckPassword(user.PasswordHash, password) {
+	println("FOUND USER:", user.Username)
+	println("HASH:", user.PasswordHash)
+
+	if !utils.CheckPassword(password, user.PasswordHash) {
 		return nil, ErrInvalidCredentials
 	}
 
-	session := models.Session{
-		SessionID:        uuid.NewString(),
-		UserID:    user.AuthUserID,
-		CreatedAt: time.Now(),
-		ExpiresAt: time.Now().Add(24 * time.Hour),
-	}
-
-	if err := repository.CreateSession(session); err != nil {
+	session, err := CreateSession(user.AuthUserID)
+	if err != nil {
 		return nil, err
 	}
 
-	return &session, nil
+	return &LoginResult{
+		Session: session,
+		User:    user,
+	}, nil
+}
+
+
+const SessionDuration = 7 * 24 * time.Hour // 7 days
+
+func CreateSession(userID string) (*models.Session, error) {
+
+	now := time.Now().UTC()
+
+	session := &models.Session{
+		SessionID: uuid.NewString(),
+		UserID:    userID,
+		CreatedAt: now,
+		ExpiresAt: now.Add(SessionDuration),
+	}
+
+	err := repository.InsertSession(session)
+	if err != nil {
+		return nil, err
+	}
+
+	return session, nil
 }
