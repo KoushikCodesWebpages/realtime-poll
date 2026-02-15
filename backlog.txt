@@ -1,0 +1,11 @@
+1) Duplicate poll / template apply
+
+User loads template → replace everything
+
+2) Import poll JSON
+
+User pastes full poll config
+
+3) Reset editor
+
+“Start over” button

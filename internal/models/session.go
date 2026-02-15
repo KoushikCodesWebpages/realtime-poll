@@ -8,3 +8,10 @@ type Session struct {
 	ExpiresAt time.Time `bson:"expires_at"`
 	CreatedAt time.Time `bson:"created_at"`
 }
+
+type ShareTokenClaims struct {
+	PollID string `json:"poll"`
+	Type   string `json:"type"` // view
+	Uses   int    `json:"uses"` // allowed uses
+	Exp    int64  `json:"exp"`
+}

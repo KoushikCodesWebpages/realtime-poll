@@ -7,16 +7,79 @@ import (
 	"net/url"
 	"github.com/google/uuid"
 
+	"go.mongodb.org/mongo-driver/bson"
+
 	"realtime-poll/internal/utils"
 	"realtime-poll/internal/models"
 	"realtime-poll/internal/dto"
 	"realtime-poll/internal/repository"
+
+	
 )
+
+
+type PollEditService struct{}
+
+
+func (s *PollEditService) PatchPoll(ctx context.Context, userID, pollID string, update bson.M) error {
+
+	poll, err := repository.GetPollByID(ctx, pollID)
+	if err != nil || poll == nil {
+		return errors.New("poll not found")
+	}
+
+	if poll.OwnerID != userID {
+		return errors.New("not allowed")
+	}
+
+	update["meta.updated_at"] = time.Now()
+
+	return repository.UpdatePollFields(ctx, pollID, update)
+}
+
+func (s *PollEditService) PutPoll(ctx context.Context, userID, pollID string, update bson.M) error {
+
+	poll, err := repository.GetPollByID(ctx, pollID)
+	if err != nil || poll == nil {
+		return errors.New("poll not found")
+	}
+
+	if poll.OwnerID != userID {
+		return errors.New("not allowed")
+	}
+
+	update["meta.updated_at"] = time.Now()
+
+	return repository.UpdatePollFields(ctx, pollID, update)
+}
+
+func (s *PollEditService) DeletePoll(ctx context.Context, userID, pollID string, force bool) error {
+
+	poll, err := repository.GetPollByID(ctx, pollID)
+	if err != nil || poll == nil {
+		return errors.New("poll not found")
+	}
+
+	if poll.OwnerID != userID {
+		return errors.New("not allowed")
+	}
+
+	if force {
+		return repository.HardDeletePoll(ctx, pollID)
+	}
+
+	return repository.SoftDeletePoll(ctx, pollID)
+}
+
+
+
+
+
+
 
 
 
 type PollGetService struct{}
-
 
 func (s *PollGetService) GetMyPollsPaginated(
 	ctx context.Context,
@@ -70,6 +133,35 @@ func (s *PollGetService) GetMyPolls(ctx context.Context, userID string) ([]model
 	return repository.GetPollsByOwner(ctx, userID)
 }
 
+type PollSingleService struct{}
+
+func (s *PollSingleService) GetPoll(
+	ctx context.Context,
+	userID string,
+	pollID string,
+) (*models.Poll, error) {
+
+	poll, err := repository.GetPollByID(ctx, pollID)
+	if err != nil {
+		return nil, err
+	}
+
+	if poll == nil {
+		return nil, errors.New("poll not found")
+	}
+
+	// owner always allowed (visibility rules later)
+	if poll.OwnerID != userID {
+		return nil, errors.New("not allowed")
+	}
+
+	// auto close expired
+	if poll.Meta.ExpiresAt != nil && time.Now().After(*poll.Meta.ExpiresAt) {
+		poll.State.IsClosed = true
+	}
+
+	return poll, nil
+}
 
 
 type PollCreateService struct{}
@@ -155,6 +247,7 @@ func (s *PollCreateService) CreatePoll(
 		State: models.PollState{
 			IsClosed: false,
 			IsLocked: false,
+			IsDeleted: false,
 			Version:  1,
 		},
 

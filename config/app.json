@@ -1,4 +1,10 @@
 {
+
+  "share": {
+    "max_uses_per_link": 10000000,
+    "allow_anonymous_view": true
+  },
+
   "poll": {
     "max_options_per_poll": 10,
     "max_question_length": 300,

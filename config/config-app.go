@@ -10,12 +10,18 @@ var AppRules AppConfig
 
 type AppConfig struct {
 	Poll      PollConfig      `json:"poll"`
+	Share ShareRules `json:"share"`
 	Voting    VotingConfig    `json:"voting"`
 	AntiAbuse AntiAbuseConfig `json:"anti_abuse"`
 	Websocket WSConfig        `json:"websocket"`
 	RateLimit RateLimitConfig `json:"rate_limit"`
 	Storage   StorageConfig   `json:"storage"`
 	Logging   LoggingConfig   `json:"logging"`
+}
+
+type ShareRules struct {
+	MaxUsesPerLink     int  `json:"max_uses_per_link"`
+	AllowAnonymousView bool `json:"allow_anonymous_view"`
 }
 
 type PollConfig struct {

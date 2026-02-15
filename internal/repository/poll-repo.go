@@ -11,6 +11,59 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 )
 
+func HardDeletePoll(ctx context.Context, pollID string) error {
+
+	res, err := getCollection().DeleteOne(
+		ctx,
+		bson.M{"poll_id": pollID, "state.is_deleted": true},
+	)
+
+	if err != nil {
+		return err
+	}
+	if res.DeletedCount == 0 {
+		return mongo.ErrNoDocuments
+	}
+	return nil
+}
+
+
+
+func SoftDeletePoll(ctx context.Context, pollID string) error {
+
+	res, err := getCollection().UpdateOne(
+		ctx,
+		bson.M{"poll_id": pollID, "state.is_deleted": false},
+		bson.M{"$set": bson.M{"state.is_deleted": true}},
+	)
+
+	if err != nil {
+		return err
+	}
+	if res.MatchedCount == 0 {
+		return mongo.ErrNoDocuments
+	}
+	return nil
+}
+
+
+func UpdatePollFields(ctx context.Context, pollID string, update bson.M) error {
+
+	res, err := getCollection().UpdateOne(
+		ctx,
+		bson.M{"poll_id": pollID, "state.is_deleted": false},
+		bson.M{"$set": update, "$inc": bson.M{"state.version": 1}},
+	)
+
+	if err != nil {
+		return err
+	}
+	if res.MatchedCount == 0 {
+		return mongo.ErrNoDocuments
+	}
+	return nil
+}
+
 func IsExpired(p models.Poll) bool {
 	if p.Behavior.EndAt == nil {
 		return false
@@ -165,13 +218,22 @@ func CountPollsByOwner(ctx context.Context, ownerID string) (int64, error) {
 	return getCollection().CountDocuments(ctx, bson.M{"owner_id": ownerID})
 }
 
-func GetPoll(id string) (*models.Poll, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+func GetPollByID(ctx context.Context, pollID string) (*models.Poll, error) {
 
 	var poll models.Poll
-	err := getCollection().FindOne(ctx, bson.M{"_id": id}).Decode(&poll)
-	return &poll, err
+
+	err := getCollection().
+		FindOne(ctx, bson.M{"poll_id": pollID}).
+		Decode(&poll)
+
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return &poll, nil
 }
 
 func IncrementVote(pollID, optionID string) error {
