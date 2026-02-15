@@ -5,3 +5,6 @@ bin/
 tmp/
 vendor/
 setup.sh
+prod.sh
+pull.sh
+SaiVps_key.pem

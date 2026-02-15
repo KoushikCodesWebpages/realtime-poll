@@ -1,0 +1,61 @@
+name: 🚀 Deploy to VPS
+
+on:
+  push:
+    branches:
+      - dev
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🔐 Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_IP }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22
+
+          script: |
+            set -e
+
+            APP_NAME="${{ secrets.APP_NAME }}"
+            CONTAINER_NAME="${{ secrets.CONTAINER_NAME }}"
+            GHCR_IMAGE="${{ secrets.GHCR_IMAGE }}"
+            GITHUB_USERNAME="${{ secrets.GITHUB_USERNAME }}"
+            PAT_TOKEN="${{ secrets.PAT_TOKEN }}"
+            APP_PORT="${{ secrets.APP_PORT }}"
+
+            echo "📦 App: $APP_NAME"
+            echo "🐳 Image: $GHCR_IMAGE:latest"
+            echo "📡 Port: $APP_PORT"
+
+            echo "🔐 Logging into GHCR..."
+            echo "$PAT_TOKEN" | docker login ghcr.io -u "$GITHUB_USERNAME" --password-stdin
+
+            echo "⬇️ Pulling latest image..."
+            docker pull $GHCR_IMAGE:latest
+
+            echo "🛑 Stopping old container (if exists)..."
+            docker stop $CONTAINER_NAME || true
+
+            echo "🗑 Removing old container..."
+            docker rm $CONTAINER_NAME || true
+
+            echo "🧹 Cleaning dangling images..."
+            docker image prune -f
+
+            echo "🚀 Starting container..."
+            docker run -d \
+              --name $CONTAINER_NAME \
+              -p $APP_PORT:$APP_PORT \
+              --restart unless-stopped \
+              $GHCR_IMAGE:latest
+
+            echo "✅ Deployment finished!"
