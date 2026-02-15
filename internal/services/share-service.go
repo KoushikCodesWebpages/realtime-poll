@@ -20,16 +20,15 @@ func sign(data []byte, secret []byte) []byte {
 	return h.Sum(nil)
 }
 
-func GenerateShareToken(pollID string) (string, error) {
-
-	expMin := os.Getenv("SHARE_TOKEN_EXPIRY_MINUTES")
-	expDur, _ := time.ParseDuration(expMin + "m")
+func GenerateShareToken(pollID string, mode string, minutes int64) (string, error) {
 
 	claims := models.ShareTokenClaims{
 		PollID: pollID,
-		Type:   "view",
-		Uses:   50,
-		Exp:    time.Now().Add(expDur).Unix(),
+		Mode:   mode,
+	}
+
+	if mode == "timed" {
+		claims.Exp = time.Now().Add(time.Duration(minutes) * time.Minute).Unix()
 	}
 
 	payload, _ := json.Marshal(claims)
@@ -42,7 +41,6 @@ func GenerateShareToken(pollID string) (string, error) {
 
 	return token, nil
 }
-
 func VerifyShareToken(token string) (*models.ShareTokenClaims, error) {
 
 	parts := strings.Split(token, ".")
@@ -50,15 +48,8 @@ func VerifyShareToken(token string) (*models.ShareTokenClaims, error) {
 		return nil, errors.New("invalid token")
 	}
 
-	payload, err := base64.RawURLEncoding.DecodeString(parts[0])
-	if err != nil {
-		return nil, errors.New("invalid payload")
-	}
-
-	sig, err := base64.RawURLEncoding.DecodeString(parts[1])
-	if err != nil {
-		return nil, errors.New("invalid signature")
-	}
+	payload, _ := base64.RawURLEncoding.DecodeString(parts[0])
+	sig, _ := base64.RawURLEncoding.DecodeString(parts[1])
 
 	secret := []byte(os.Getenv("SHARE_TOKEN_SECRET"))
 	expected := sign(payload, secret)
@@ -70,8 +61,8 @@ func VerifyShareToken(token string) (*models.ShareTokenClaims, error) {
 	var claims models.ShareTokenClaims
 	json.Unmarshal(payload, &claims)
 
-	if time.Now().Unix() > claims.Exp {
-		return nil, errors.New("token expired")
+	if claims.Mode == "timed" && time.Now().Unix() > claims.Exp {
+		return nil, errors.New("link expired")
 	}
 
 	return &claims, nil

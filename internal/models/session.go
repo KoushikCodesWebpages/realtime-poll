@@ -11,6 +11,7 @@ type Session struct {
 
 type ShareTokenClaims struct {
 	PollID string `json:"poll"`
+	Mode   string `json:"mode"` // infinite | timed
 	Type   string `json:"type"` // view
 	Uses   int    `json:"uses"` // allowed uses
 	Exp    int64  `json:"exp"`

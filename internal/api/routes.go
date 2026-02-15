@@ -40,11 +40,15 @@ func RegisterRoutes(r *gin.Engine) {
 			poll.PATCH("/:poll_id", PatchPoll)
 
 			poll.DELETE("/:poll_id",DeletePoll)
+
+			poll.POST("/:poll_id/share",GenerateShareLink)
 		// poll.POST("/:id/vote", Vote) // public
 	}
 
-		// Websocket
+		// Websocket	
 		api.GET("/ws/:id", ws.HandleWS)
+
+		r.GET("/b1/poll/share", ViewSharedPoll) 
 	}
 
 }

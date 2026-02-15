@@ -15,21 +15,32 @@ func GenerateShareLink(c *gin.Context) {
 	pollID := c.Param("poll_id")
 	userID := c.GetString(constants.CtxUserID)
 
-	// TODO: verify ownership later
-	if userID == "" {
-		c.JSON(401, gin.H{"issue": "unauthorized"})
+	poll, _ := repository.GetPollByIDRaw(c.Request.Context(), pollID)
+	if poll == nil || poll.OwnerID != userID {
+		c.JSON(403, gin.H{"issue": "not allowed"})
 		return
 	}
 
-	token, err := services.GenerateShareToken(pollID)
+	var body struct {
+		Mode    string `json:"mode"` // infinite | timed
+		Minutes int64  `json:"minutes"`
+	}
+
+	c.ShouldBindJSON(&body)
+
+	if body.Mode == "" {
+		body.Mode = "infinite"
+	}
+
+	token, err := services.GenerateShareToken(pollID, body.Mode, body.Minutes)
 	if err != nil {
-		c.JSON(500, gin.H{"issue": "failed to generate"})
+		c.JSON(500, gin.H{"issue": "failed to create link"})
 		return
 	}
 
-	link := "/b1/poll/share?token=" + token
-
-	c.JSON(200, gin.H{"link": link})
+	c.JSON(200, gin.H{
+		"link": "/b1/poll/share?token=" + token,
+	})
 }
 
 func ViewSharedPoll(c *gin.Context) {
@@ -42,8 +53,8 @@ func ViewSharedPoll(c *gin.Context) {
 		return
 	}
 
-	poll, err := repository.GetPollByID(c.Request.Context(), claims.PollID)
-	if err != nil {
+	poll, _ := repository.GetPollByID(c.Request.Context(), claims.PollID)
+	if poll == nil {
 		c.JSON(404, gin.H{"issue": "poll not found"})
 		return
 	}
