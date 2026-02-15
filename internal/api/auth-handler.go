@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"realtime-poll/internal/services"
 	"realtime-poll/internal/repository"
+	"realtime-poll/internal/middleware"
 	// "realtime-poll/config"
 )
 
@@ -68,6 +69,19 @@ func Login(c *gin.Context) {
 	})
 
 	c.JSON(200, gin.H{"status": "logged_in"})
+}
+func Session(c *gin.Context) {
+	user, exists := middleware.GetUser(c)
+	if !exists {
+		c.JSON(401, gin.H{"error": "not authenticated"})
+		return
+	}
+
+	c.JSON(200, gin.H{
+		"id": user.AuthUserID,
+		"username": user.Username,
+		"email": user.Email,
+	})
 }
 
 func Logout(c *gin.Context) {

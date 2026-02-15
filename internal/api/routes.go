@@ -28,6 +28,7 @@ func RegisterRoutes(r *gin.Engine) {
 			auth.POST("/register", Register)
 			auth.POST("/login", Login)
 			auth.POST("/logout", Logout)
+			auth.GET("/session", middleware.RequireAuth(), Session)
 		}
 
 		// Poll APIs
