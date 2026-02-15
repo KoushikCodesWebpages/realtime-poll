@@ -2,6 +2,9 @@ package api
 
 import (
 	"os"
+	"net/http"
+	"time"
+
 
 	"github.com/gin-gonic/gin"
 	"realtime-poll/internal/services"
@@ -52,25 +55,50 @@ func Login(c *gin.Context) {
 
 	secure := os.Getenv("APP_ENV") == "prod"
 
-	c.SetCookie(
-		"session_id",
-		session.SessionID,
-		86400,  // 24h
-		"/",
-		"",
-		secure, // HTTPS only in prod
-		true,   // httpOnly (important)
-	)
+	maxAge := int(time.Until(session.ExpiresAt).Seconds())
+
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     "session_id",
+		Value:    session.SessionID,   // <-- important
+		Path:     "/",
+		MaxAge:   maxAge,
+		HttpOnly: true,
+		Secure:   secure,
+		SameSite: func() http.SameSite {
+			if secure {
+				return http.SameSiteNoneMode
+			}
+			return http.SameSiteLaxMode
+		}(),
+	})
 
 	c.JSON(200, gin.H{"status": "logged_in"})
 }
 
 func Logout(c *gin.Context) {
+
 	cookie, err := c.Cookie("session_id")
 	if err == nil {
 		repository.DeleteSession(cookie)
 	}
 
-	c.SetCookie("session_id", "", -1, "/", "", false, true)
+	secure := os.Getenv("APP_ENV") == "prod"
+
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     "session_id",
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   secure,
+		SameSite: func() http.SameSite {
+			if secure {
+				return http.SameSiteNoneMode
+			}
+			return http.SameSiteLaxMode
+		}(),
+	})
+
 	c.JSON(200, gin.H{"status": "logged_out"})
 }
+
