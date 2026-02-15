@@ -53,9 +53,15 @@ func (s *PollEditService) PutPoll(ctx context.Context, userID, pollID string, up
 	return repository.UpdatePollFields(ctx, pollID, update)
 }
 
-func (s *PollEditService) DeletePoll(ctx context.Context, userID, pollID string, force bool) error {
+func (s *PollEditService) DeletePoll(
+	ctx context.Context,
+	userID string,
+	pollID string,
+	force bool,
+) error {
 
-	poll, err := repository.GetPollByID(ctx, pollID)
+	// 🔥 use RAW fetch so deleted polls can be accessed
+	poll, err := repository.GetPollByIDRaw(ctx, pollID)
 	if err != nil || poll == nil {
 		return errors.New("poll not found")
 	}
@@ -65,16 +71,18 @@ func (s *PollEditService) DeletePoll(ctx context.Context, userID, pollID string,
 	}
 
 	if force {
+		if !poll.State.IsDeleted {
+			return errors.New("poll must be soft deleted first")
+		}
 		return repository.HardDeletePoll(ctx, pollID)
+	}
+
+	if poll.State.IsDeleted {
+		return errors.New("already deleted")
 	}
 
 	return repository.SoftDeletePoll(ctx, pollID)
 }
-
-
-
-
-
 
 
 

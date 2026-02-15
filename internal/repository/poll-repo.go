@@ -2,39 +2,90 @@ package repository
 
 import (
 	"context"
-	"realtime-poll/internal/db"
-	"realtime-poll/internal/models"
-	"realtime-poll/internal/dto"
+	"errors"
 	"time"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.mongodb.org/mongo-driver/bson"
+
+	"realtime-poll/internal/db"
+	"realtime-poll/internal/models"
+	"realtime-poll/internal/dto"
 )
 
+func GetPollByIDRaw(ctx context.Context, pollID string) (*models.Poll, error) {
+
+	var poll models.Poll
+
+	err := getCollection().
+		FindOne(ctx, bson.M{"poll_id": pollID}).
+		Decode(&poll)
+
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return &poll, nil
+}
+
+func GetPollByID(ctx context.Context, pollID string) (*models.Poll, error) {
+
+	var poll models.Poll
+
+	err := getCollection().FindOne(
+		ctx,
+		bson.M{
+			"poll_id": pollID,
+			"state.is_deleted": bson.M{"$ne": true},
+		},
+	).Decode(&poll)
+
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return &poll, nil
+}
 func HardDeletePoll(ctx context.Context, pollID string) error {
 
 	res, err := getCollection().DeleteOne(
 		ctx,
-		bson.M{"poll_id": pollID, "state.is_deleted": true},
+		bson.M{
+			"poll_id": pollID,
+			"state.is_deleted": true,
+		},
 	)
 
 	if err != nil {
 		return err
 	}
 	if res.DeletedCount == 0 {
-		return mongo.ErrNoDocuments
+		return errors.New("poll must be soft deleted first")
 	}
+
 	return nil
 }
-
-
 
 func SoftDeletePoll(ctx context.Context, pollID string) error {
 
 	res, err := getCollection().UpdateOne(
 		ctx,
-		bson.M{"poll_id": pollID, "state.is_deleted": false},
-		bson.M{"$set": bson.M{"state.is_deleted": true}},
+		bson.M{
+			"poll_id": pollID,
+			"state.is_deleted": false,
+		},
+		bson.M{
+			"$set": bson.M{
+				"state.is_deleted": true,
+				"meta.updated_at": time.Now(),
+			},
+		},
 	)
 
 	if err != nil {
@@ -43,10 +94,9 @@ func SoftDeletePoll(ctx context.Context, pollID string) error {
 	if res.MatchedCount == 0 {
 		return mongo.ErrNoDocuments
 	}
+
 	return nil
 }
-
-
 func UpdatePollFields(ctx context.Context, pollID string, update bson.M) error {
 
 	res, err := getCollection().UpdateOne(
@@ -82,11 +132,15 @@ func CreatePoll(ctx context.Context, poll *models.Poll) error {
 	_, err := getCollection().InsertOne(ctx, poll)
 	return err
 }
+
 func GetPollsByOwner(ctx context.Context, ownerID string) ([]models.Poll, error) {
 
 	cursor, err := getCollection().Find(
 		ctx,
-		bson.M{"owner_id": ownerID},
+		bson.M{
+			"owner_id": ownerID,
+			"state.is_deleted": bson.M{"$ne": true},
+		},
 		options.Find().SetSort(bson.M{"meta.created_at": -1}),
 	)
 	if err != nil {
@@ -101,6 +155,8 @@ func GetPollsByOwner(ctx context.Context, ownerID string) ([]models.Poll, error)
 
 	return polls, nil
 }
+
+
 
 func GetPollsByOwnerPaginated(
 	ctx context.Context,
@@ -161,7 +217,10 @@ func GetPollsByOwnerPaginated(
 
 func buildOwnerFilter(ownerID string, f dto.PollFilter) bson.M {
 
-	filter := bson.M{"owner_id": ownerID}
+	filter := bson.M{
+	"owner_id": ownerID,
+	"state.is_deleted": bson.M{"$ne": true},
+	}
 
 	now := time.Now()
 
@@ -216,24 +275,6 @@ func buildOwnerFilter(ownerID string, f dto.PollFilter) bson.M {
 }
 func CountPollsByOwner(ctx context.Context, ownerID string) (int64, error) {
 	return getCollection().CountDocuments(ctx, bson.M{"owner_id": ownerID})
-}
-
-func GetPollByID(ctx context.Context, pollID string) (*models.Poll, error) {
-
-	var poll models.Poll
-
-	err := getCollection().
-		FindOne(ctx, bson.M{"poll_id": pollID}).
-		Decode(&poll)
-
-	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			return nil, nil
-		}
-		return nil, err
-	}
-
-	return &poll, nil
 }
 
 func IncrementVote(pollID, optionID string) error {

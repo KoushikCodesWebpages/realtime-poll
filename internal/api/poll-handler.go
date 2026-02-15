@@ -127,7 +127,7 @@ func DeletePoll(c *gin.Context) {
 	pollID := c.Param("poll_id")
 	userID := c.GetString(constants.CtxUserID)
 
-	force := c.Query("force") == "true"
+	force := c.Query("force") == "1"
 
 	service := services.PollEditService{}
 	err := service.DeletePoll(c.Request.Context(), userID, pollID, force)
@@ -137,9 +137,13 @@ func DeletePoll(c *gin.Context) {
 		return
 	}
 
-	c.JSON(200, gin.H{"status": "deleted"})
-}
+	if force {
+		c.JSON(200, gin.H{"status": "permanently deleted"})
+		return
+	}
 
+	c.JSON(200, gin.H{"status": "soft deleted"})
+}
 
 
 func parsePollFilter(c *gin.Context) dto.PollFilter {
