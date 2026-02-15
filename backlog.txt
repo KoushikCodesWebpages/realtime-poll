@@ -1,11 +1,110 @@
-1) Duplicate poll / template apply
+Real-Time Poll Rooms — Backend Backlog
+Current Status
 
-User loads template → replace everything
+The backend now supports the full poll data lifecycle:
 
-2) Import poll JSON
+Poll creation
+Poll editing (PATCH / PUT)
+Soft & hard delete
+Ownership checks
+Token-based share links
+Voting endpoint
+Anti-abuse protections (session/IP limits, multi-vote limits)
+Access control (public / authenticated / whitelist)
+Pagination & filtering
 
-User pastes full poll config
+The database model and correctness layer are stable.
+Remaining work focuses on realtime behavior, integrity guarantees, and product features.
 
-3) Reset editor
+High Priority — Required for Assignment
 
-“Start over” button
+1. Lock Poll After Voting Starts
+Once the first vote is cast:
+
+state.is_locked = true
+Disallow changing:
+options
+vote settings
+access settings
+Allow changing:
+description
+end time (optional decision)
+
+2. WebSocket Poll Rooms
+Users viewing a poll must join a realtime room:
+
+room: poll:<poll_id>
+Server must support:
+connect / disconnect
+join / leave room
+broadcast messages
+
+3. Realtime Vote Updates
+
+After a vote is successfully cast:
+Server broadcasts updated results to room.
+Example payload:
+{
+  "type": "vote_update",
+  "total_votes": 10,
+  "options": [
+    {"id":"1","votes":4},
+    {"id":"2","votes":6}
+  ]
+}
+
+4. Share Link Realtime Access
+Shared users must also receive live updates.
+
+Flow:
+GET shared poll → load initial state
+WebSocket with token → join same poll room
+Medium Priority — Fairness & Integrity
+
+5. Vote Transaction Safety
+Prevent race conditions during simultaneous voting:
+Mongo transaction or atomic updates
+
+6. Automatic Poll Close
+Background job:
+If now > end_at
+Close poll
+Broadcast poll_closed event
+
+7. View Tracking
+
+Track unique views per session:
+increment meta.total_views
+
+8. Vote Flood Protection
+
+Rate limit:
+max N votes per time window per IP/session
+Low Priority — Product Features
+
+9. Duplicate Poll
+Copy poll without votes or analytics.
+
+10. Import / Export Poll JSON
+Allow exporting and importing poll configuration.
+
+11. Reset Poll
+Owner can clear all votes.
+
+12. Edit History
+Store versioned changes of poll settings.
+
+Optional Improvements
+
+Hide results until poll ends
+Live viewer count
+QR code generation for sharing
+Suggested Resume Order
+When development continues:
+Lock poll after first vote
+Implement WebSocket hub
+Broadcast vote updates
+Auto-close poll
+Add rate limiting
+
+This completes the real-time poll assignment requirements.

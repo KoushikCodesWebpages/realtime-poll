@@ -31,24 +31,24 @@ func RegisterRoutes(r *gin.Engine) {
 		}
 
 		// Poll APIs
-	poll := api.Group("/poll", middleware.RequireAuth(),)
-	{
-		poll.POST("/",CreatePoll) // protected
-		poll.GET("/mine", GetMyPolls)
+		poll := api.Group("/poll", middleware.RequireAuth(),)
+		{
+			poll.POST("/",CreatePoll) // protected
+			poll.GET("/mine", GetMyPolls)
 
-			poll.PUT("/:poll_id", PutPoll)
-			poll.PATCH("/:poll_id", PatchPoll)
+				poll.PUT("/:poll_id", PutPoll)
+				poll.PATCH("/:poll_id", PatchPoll)
 
-			poll.DELETE("/:poll_id",DeletePoll)
+				poll.DELETE("/:poll_id",DeletePoll)
 
-			poll.POST("/:poll_id/share",GenerateShareLink)
-		// poll.POST("/:id/vote", Vote) // public
-	}
+				poll.POST("/:poll_id/share",GenerateShareLink)
+			
+		}
 
 		// Websocket	
 		api.GET("/ws/:id", ws.HandleWS)
-
-		r.GET("/b1/poll/share", ViewSharedPoll) 
+		api.POST("/vote", middleware.OptionalAuth(), CastVote) 
+		api.GET("/poll/share", ViewSharedPoll) 
 	}
 
 }

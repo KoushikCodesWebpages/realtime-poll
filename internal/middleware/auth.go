@@ -36,3 +36,21 @@ func RequireAuth() gin.HandlerFunc {
 		c.Next()
 	}
 }
+
+func OptionalAuth() gin.HandlerFunc {
+	return func(c *gin.Context) {
+
+		cookie, err := c.Cookie("session_id")
+		if err != nil {
+			c.Next()
+			return
+		}
+
+		session, _ := repository.GetSession(cookie)
+		if session != nil {
+			c.Set(constants.CtxUserID, session.UserID)
+		}
+
+		c.Next()
+	}
+}
