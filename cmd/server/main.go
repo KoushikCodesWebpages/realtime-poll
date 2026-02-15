@@ -19,7 +19,6 @@ import (
 
 func main() {
 
-
 // Load env
 err := config.LoadEnv()
 if err != nil {
