@@ -4,12 +4,71 @@ import (
 	"time"
 	"context"
 	"errors"
+	"net/url"
 	"github.com/google/uuid"
 
+	"realtime-poll/internal/utils"
 	"realtime-poll/internal/models"
 	"realtime-poll/internal/dto"
 	"realtime-poll/internal/repository"
 )
+
+
+
+type PollGetService struct{}
+
+
+func (s *PollGetService) GetMyPollsPaginated(
+	ctx context.Context,
+	userID string,
+	filter dto.PollFilter,
+	query url.Values,
+	cursor *time.Time,
+	direction string,
+) (*dto.PollListResponse, error) {
+
+	polls, err := repository.GetPollsByOwnerPaginated(ctx, userID, filter, cursor, direction)
+	if err != nil {
+		return nil, err
+	}
+
+	total, _ := repository.CountPollsByOwner(ctx, userID)
+
+	base := "/b1/poll/mine"
+
+	var next *string
+	var prev *string
+
+	if len(polls) > 0 {
+
+		if int64(len(polls)) == filter.Limit {
+			n := utils.BuildPageLink(base, query, polls[len(polls)-1].Meta.CreatedAt, "next")
+			next = &n
+		}
+
+		if cursor != nil {
+			p := utils.BuildPageLink(base, query, polls[0].Meta.CreatedAt, "prev")
+			prev = &p
+		}
+	}
+
+	return &dto.PollListResponse{
+		Data:  polls,
+		Next:  next,
+		Prev:  prev,
+		Total: total,
+	}, nil
+}
+
+
+func (s *PollGetService) GetMyPolls(ctx context.Context, userID string) ([]models.Poll, error) {
+
+	if userID == "" {
+		return nil, errors.New("unauthorized")
+	}
+
+	return repository.GetPollsByOwner(ctx, userID)
+}
 
 
 
