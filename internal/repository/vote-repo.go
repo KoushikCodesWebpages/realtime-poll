@@ -16,6 +16,26 @@ func voteCollection() *mongo.Collection {
 	return db.DB.Collection("votes")
 }
 
+func GetVoteForViewer(ctx context.Context, pollID, userID, sessionID string) (*models.VoteRecord, error) {
+
+	filter := bson.M{"poll_id": pollID}
+
+	if userID != "" {
+		filter["user_id"] = userID
+	} else {
+		filter["session_id"] = sessionID
+	}
+
+	var vote models.VoteRecord
+	err := voteCollection().FindOne(ctx, filter).Decode(&vote)
+	if err != nil {
+		return nil, err
+	}
+
+	return &vote, nil
+}
+
+
 func FindExistingVote(ctx context.Context, pollID, userID, sessionID string) (*models.Vote, error) {
 
 	filter := bson.M{

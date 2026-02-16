@@ -271,7 +271,15 @@ func GetPoll(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, poll)
+	sessionID, _ := c.Cookie("session_id")
+	userID = c.GetString(constants.CtxUserID)
+
+	viewer, _ := services.BuildViewerState(c.Request.Context(), poll, userID, sessionID)
+
+	c.JSON(200, gin.H{
+		"poll":   poll,
+		"viewer": viewer,
+	})
 }
 
 

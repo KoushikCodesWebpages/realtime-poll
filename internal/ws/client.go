@@ -68,3 +68,8 @@ func (c *Client) Send(msg []byte) {
 	default:
 	}
 }
+
+func (c *Client) SendJSON(v any) {
+	bytes, _ := json.Marshal(v)
+	c.Send(bytes)
+}

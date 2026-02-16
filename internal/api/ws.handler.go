@@ -53,7 +53,7 @@ func WsPoll(hub *ws.Hub, voteService *services.VoteService) gin.HandlerFunc {
 		room.Join(client)
 
 		go client.WritePump()
-
+		go sendInitialState(client, voteService, pollID, userID, sessionCookie)
 		// -------------------- READ LOOP --------------------
 		go client.ReadPump(func(userID, optionID, pollID string) {
 
@@ -118,3 +118,38 @@ func WsPoll(hub *ws.Hub, voteService *services.VoteService) gin.HandlerFunc {
 	}
 }
 
+func sendInitialState(client *ws.Client, voteService *services.VoteService, pollID, userID, sessionID string) {
+
+	ctx := context.Background()
+
+	poll, err := repository.GetPollByID(ctx, pollID)
+	if err != nil || poll == nil {
+		return
+	}
+
+	// lifecycle
+	now := time.Now()
+	started := poll.Behavior.StartAt == nil || now.After(*poll.Behavior.StartAt)
+	ended := poll.Behavior.EndAt != nil && now.After(*poll.Behavior.EndAt)
+
+	// viewer vote
+	vote, _ := repository.GetVoteForViewer(ctx, pollID, userID, sessionID)
+
+	var myVote any = nil
+	if vote != nil {
+		myVote = vote.OptionID
+	}
+
+	// results
+	results, _ := voteService.GetResults(ctx, pollID)
+
+	payload := map[string]any{
+		"type":    "init_state",
+		"my_vote": myVote,
+		"results": results,
+		"started": started,
+		"ended":   ended,
+	}
+
+	client.SendJSON(payload)
+}
