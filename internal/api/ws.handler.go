@@ -4,6 +4,7 @@ import (
 	// "encoding/json"
 	"net/http"
 	"context"
+	"log"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -12,123 +13,178 @@ import (
 	"realtime-poll/internal/repository"
 	"realtime-poll/internal/services"
 	"realtime-poll/internal/ws"
+	"realtime-poll/internal/utils"
 	"realtime-poll/internal/apperror"
 )
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
 }
+func handleRealtimeVote(
+	ctx context.Context,
+	room *ws.Room,
+	pollID string,
+	userID string,
+	optionID string,
+) {
+	voteService := services.VoteService{}
+
+	version, err := voteService.CastVoteRealtime(
+		ctx,
+		pollID,
+		optionID,
+		userID,
+		"", // session handled in HTTP only
+		"",
+	)
+
+	if err != nil {
+		room.BroadcastJSON(gin.H{
+			"type": "vote_rejected",
+			"code": err.(*apperror.AppError).Code,
+			"message": err.(*apperror.AppError).Message,
+		})
+		return
+	}
+
+	// fetch updated counts
+	results, _ := voteService.GetResults(ctx, pollID)
+
+	for _, r := range results {
+		room.BroadcastJSON(gin.H{
+			"type":       "vote_update",
+			"option_id":  r.OptionID,
+			"votes":      r.Votes,
+			"total_votes": version,
+		})
+	}
+}
 
 func WsPoll(hub *ws.Hub, voteService *services.VoteService) gin.HandlerFunc {
+
 	return func(c *gin.Context) {
 
 		pollID := c.Param("pollId")
 
-		// -------------------- AUTH --------------------
-		sessionCookie, err := c.Cookie("session_id")
+		/* ---------------- AUTH TOKEN ---------------- */
+
+		token := c.Query("token")
+		if token == "" {
+			c.AbortWithStatusJSON(401, gin.H{"error": "missing ws token"})
+			return
+		}
+
+		userID, err := utils.ParseWSToken(token)
 		if err != nil {
-			c.JSON(401, gin.H{"error": "not logged in"})
+			log.Println("WS TOKEN ERROR:", err)
+			c.AbortWithStatusJSON(401, gin.H{"error": "invalid ws token"})
 			return
 		}
 
-		session, err := repository.GetSession(sessionCookie)
-		if err != nil || session == nil {
-			c.JSON(401, gin.H{"error": "invalid session"})
-			return
-		}
-
-		userID := session.UserID
+		sessionID := "ws:" + userID
 		ip := c.ClientIP()
-		
 
-		// -------------------- UPGRADE --------------------
+		/* ---------------- UPGRADE ---------------- */
+
 		conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 		if err != nil {
 			return
 		}
 
-		// -------------------- ROOM JOIN --------------------
+		/* ---------------- CLIENT + ROOM ---------------- */
+
 		room := hub.GetRoom(pollID)
 		client := ws.NewClient(conn, room, userID)
 
-		room.Join(client)
+		room.Join <- client
+
+		/* ---------------- START PUMPS ---------------- */
 
 		go client.WritePump()
-		go sendInitialState(client, voteService, pollID, userID, sessionCookie)
 
-
-		// -------------------- READ LOOP --------------------
 		go client.ReadPump(func(userID, optionID, pollID string) {
 
-			ctx := context.Background()
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
 
-			// load poll
+			/* -------- load poll -------- */
+
 			poll, err := repository.GetPollByID(ctx, pollID)
 			if err != nil || poll == nil {
 				sendReject(client, "POLL_NOT_FOUND", "poll not found")
 				return
 			}
 
-			// lifecycle FIRST
+			/* -------- lifecycle -------- */
+
 			if poll.State.IsClosed ||
-			(poll.Behavior.EndAt != nil && time.Now().After(*poll.Behavior.EndAt)) {
+				(poll.Behavior.EndAt != nil && time.Now().After(*poll.Behavior.EndAt)) {
 
 				sendReject(client, "POLL_ENDED", "poll has ended")
 				return
 			}
 
-			// realtime capability AFTER lifecycle
+			/* -------- realtime capability -------- */
+
 			if !poll.Behavior.ShowLiveResults {
 				sendReject(client, "NOT_REALTIME", "this poll does not support live voting")
 				return
 			}
-		// ---------- cast vote ----------
-		version, err := voteService.CastVoteRealtime(
-			ctx,
-			pollID,
-			optionID,
-			userID,
-			sessionCookie,
-			ip,
-		)
 
-		if err != nil {
-			if appErr, ok := err.(*apperror.AppError); ok {
-				sendReject(client, string(appErr.Code), appErr.Message)
-			} else {
-				sendReject(client, "VOTE_FAILED", "vote failed")
+			/* -------- CAST VOTE -------- */
+
+			version, err := voteService.CastVoteRealtime(
+				ctx,
+				pollID,
+				optionID,
+				userID,
+				sessionID,
+				ip,
+			)
+
+			if err != nil {
+				if appErr, ok := err.(*apperror.AppError); ok {
+					sendReject(client, string(appErr.Code), appErr.Message)
+				} else {
+					sendReject(client, "VOTE_FAILED", "vote failed")
+				}
+				return
 			}
-			return
-		}
 
-		now := time.Now()
-		pollEnded := poll.Behavior.EndAt != nil && now.After(*poll.Behavior.EndAt)
+			now := time.Now()
+			pollEnded := poll.Behavior.EndAt != nil && now.After(*poll.Behavior.EndAt)
 
-		// hidden ballot → only ack
-		if poll.Vote.HideResults && !pollEnded {
-			client.SendJSON(map[string]any{
-				"type":    "vote_ack",
+			/* -------- hidden ballot -------- */
+
+			if poll.Vote.HideResults && !pollEnded {
+				client.SendJSON(map[string]any{
+					"type":    "vote_ack",
+					"version": version,
+				})
+				return
+			}
+
+			/* -------- FETCH RESULTS -------- */
+
+			results, err := voteService.GetResults(ctx, pollID)
+			if err != nil {
+				sendReject(client, "RESULT_ERROR", "failed to fetch results")
+				return
+			}
+
+			/* -------- BROADCAST -------- */
+
+			room.BroadcastJSON(map[string]any{
+				"type":    "vote_update",
+				"poll_id": pollID,
 				"version": version,
+				"results": results,
 			})
-			return
-		}
-
-		// fetch updated results (after version increment)
-		results, err := voteService.GetResults(ctx, pollID)
-		if err != nil {
-			sendReject(client, "RESULT_ERROR", "failed to fetch results")
-			return
-		}
-
-		// ---------- BROADCAST ORDERED EVENT ----------
-		room.BroadcastJSON(map[string]any{
-			"type":    "vote_update",
-			"poll_id": pollID,
-			"version": version,
-			"results": results,
 		})
 
-		})
+		/* ---------------- INITIAL STATE ---------------- */
+
+		go sendInitialState(client, voteService, pollID, userID, sessionID)
 	}
 }
 

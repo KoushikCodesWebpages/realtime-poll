@@ -85,3 +85,11 @@ func BadRequest(msg string) *AppError {
 		Message: msg,
 	}
 }
+
+func Validation(message string) *AppError {
+	return &AppError{
+		Code:    VALIDATION_FAILED,
+		Message: message,
+	}
+}
+

@@ -47,9 +47,14 @@ func canUserVote(poll *models.Poll, userID string) error {
 	return nil
 }
 
+type VoteResult struct {
+	Version        int64  `json:"version"`
+	SelectedOption string `json:"selected_option"`
+	AlreadyVoted   bool   `json:"already_voted"`
+	Changed        bool   `json:"changed"`
+}
 
 type VoteService struct{}
-
 func (s *VoteService) CastVote(
 	ctx context.Context,
 	pollID string,
@@ -57,14 +62,14 @@ func (s *VoteService) CastVote(
 	userID string,
 	sessionID string,
 	ip string,
-) (int64, error) {
+) (*VoteResult, error) {
 
 	poll, err := repository.GetPollByID(ctx, pollID)
 	if err != nil {
-		return 0, apperror.Internal()
+		return nil, apperror.Internal()
 	}
 	if poll == nil {
-		return 0, &apperror.AppError{
+		return nil, &apperror.AppError{
 			Code:    apperror.POLL_NOT_FOUND,
 			Message: "Poll not found",
 		}
@@ -74,21 +79,21 @@ func (s *VoteService) CastVote(
 
 	// ===== Time rules =====
 	if poll.Behavior.StartAt != nil && now.Before(*poll.Behavior.StartAt) {
-		return 0, &apperror.AppError{
+		return nil, &apperror.AppError{
 			Code:    apperror.POLL_NOT_STARTED,
 			Message: "Voting has not started yet",
 		}
 	}
 
 	if poll.Behavior.EndAt != nil && now.After(*poll.Behavior.EndAt) {
-		return 0, &apperror.AppError{
+		return nil, &apperror.AppError{
 			Code:    apperror.POLL_ENDED,
 			Message: "Voting has ended",
 		}
 	}
 
 	if poll.State.IsClosed {
-		return 0, &apperror.AppError{
+		return nil, &apperror.AppError{
 			Code:    apperror.POLL_CLOSED,
 			Message: "Poll is closed",
 		}
@@ -96,7 +101,7 @@ func (s *VoteService) CastVote(
 
 	// ===== Permission rules =====
 	if err := canUserVote(poll, userID); err != nil {
-		return 0, err
+		return nil, err
 	}
 
 	// ===== Validate option =====
@@ -108,10 +113,7 @@ func (s *VoteService) CastVote(
 		}
 	}
 	if !valid {
-		return 0, &apperror.AppError{
-			Code:    apperror.VALIDATION_FAILED,
-			Message: "Invalid option",
-		}
+		return nil, apperror.Validation("Invalid option")
 	}
 
 	identity := userID
@@ -131,62 +133,83 @@ func (s *VoteService) CastVote(
 		UpdatedAt: now,
 	}
 
-	// ===== Try insert =====
+	// ===== Try insert (first vote) =====
 	err = repository.InsertVoteAtomic(ctx, vote)
 
-	// --- First vote ---
 	if err == nil {
 		version, err := repository.IncrementOptionVote(ctx, pollID, optionID, 1)
 		if err != nil {
-			return 0, apperror.Internal()
+			return nil, apperror.Internal()
 		}
-		return version, nil
+
+		return &VoteResult{
+			Version:        version,
+			SelectedOption: optionID,
+			AlreadyVoted:   false,
+			Changed:        false,
+		}, nil
 	}
 
-	// ===== Not duplicate => infra failure =====
+	// ===== Infra failure =====
 	if !repository.IsDuplicateKey(err) {
-		return 0, apperror.Internal()
+		return nil, apperror.Internal()
 	}
 
 	// ===== Already voted =====
+	existing, err := repository.GetVoteByIdentity(ctx, pollID, identity)
+	if err != nil {
+		return nil, apperror.Internal()
+	}
+	if existing == nil {
+		return nil, apperror.Internal()
+	}
+
+	// ===== No change allowed =====
 	if !poll.Vote.AllowChangeVote {
-		return 0, &apperror.AppError{
-			Code:    apperror.POLL_ALREADY_VOTED,
-			Message: "You already voted",
-		}
+		return &VoteResult{
+			Version:        poll.State.Version,
+			SelectedOption: existing.OptionID,
+			AlreadyVoted:   true,
+			Changed:        false,
+		}, nil
+	}
+
+	// ===== Same option clicked again =====
+	if existing.OptionID == optionID {
+		return &VoteResult{
+			Version:        poll.State.Version,
+			SelectedOption: existing.OptionID,
+			AlreadyVoted:   true,
+			Changed:        false,
+		}, nil
 	}
 
 	// ===== Change vote =====
-	existing, err := repository.GetVoteByIdentity(ctx, pollID, identity)
-	if err != nil {
-		return 0, apperror.Internal()
-	}
-	if existing == nil {
-		return 0, apperror.Internal()
-	}
-
-	// same option = no-op (no new version)
-	if existing.OptionID == optionID {
-		return poll.State.Version, nil
-	}
 
 	// decrement old
 	if _, err := repository.IncrementOptionVote(ctx, pollID, existing.OptionID, -1); err != nil {
-		return 0, apperror.Internal()
+		return nil, apperror.Internal()
 	}
 
-	// increment new → authoritative version
+	// increment new
 	version, err := repository.IncrementOptionVote(ctx, pollID, optionID, 1)
 	if err != nil {
-		return 0, apperror.Internal()
+		return nil, apperror.Internal()
 	}
 
+	// update record
 	if err := repository.UpdateVoteOption(ctx, existing.VoteID, optionID); err != nil {
-		return 0, apperror.Internal()
+		return nil, apperror.Internal()
 	}
 
-	return version, nil
+	return &VoteResult{
+		Version:        version,
+		SelectedOption: optionID,
+		AlreadyVoted:   true,
+		Changed:        true,
+	}, nil
 }
+
 
 func (s *VoteService) CastVoteRealtime(
 	ctx context.Context,
@@ -195,7 +218,7 @@ func (s *VoteService) CastVoteRealtime(
 	userID string,
 	sessionID string,
 	ip string,
-) (int64, error){
+) (*VoteResult, error){
 	return s.CastVote(ctx, pollID, optionID, userID, sessionID, ip)
 }
 

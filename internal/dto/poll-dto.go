@@ -19,20 +19,46 @@ type OptionResult struct {
 	Votes    int    `json:"votes"`
 }
 
-
 type CreatePollReq struct {
+
+	// ================= CONTENT =================
 	Question    string   `json:"question" binding:"required,min=5,max=200"`
 	Description string   `json:"description,omitempty"`
 	Options     []string `json:"options" binding:"required,min=2,max=10"`
 
-	Visibility    string   `json:"visibility"` // public | authenticated | whitelist | link
+	Images           []string `json:"images,omitempty"`
+	AllowCustomOption bool    `json:"allow_custom_option"`
+	RandomizeOptions  bool    `json:"randomize_options"`
+
+	// ================= ACCESS =================
+	Visibility    string   `json:"visibility" binding:"oneof=public authenticated whitelist link"`
 	AllowedEmails []string `json:"allowed_emails,omitempty"`
 
-	AllowChange bool `json:"allow_change"`
-	Anonymous   bool `json:"anonymous"`
+	// ================= VOTING =================
+	MaxVotesPerUser int  `json:"max_votes_per_user"`
+	AllowChange     bool `json:"allow_change"`
+	Anonymous       bool `json:"anonymous"`
 
+	HideResultsUntilEnd bool `json:"hide_results_until_end"`
+	ShowVoters          bool `json:"show_voters"`
+
+	UniqueIP      bool `json:"unique_ip"`
+	UniqueSession bool `json:"unique_session"`
+
+	// ================= BEHAVIOR =================
 	StartAt *time.Time `json:"start_at,omitempty"`
 	EndAt   *time.Time `json:"end_at,omitempty"`
+
+	AutoClose       bool `json:"auto_close"`
+	ShowLiveResults bool `json:"show_live_results"`
+	NotifyOwnerOnVote bool `json:"notify_owner_on_vote"`
+
+	// ================= DISTRIBUTION =================
+	ShareType string `json:"share_type" binding:"omitempty,oneof=none link qr embed"`
+
+	// ================= ANALYTICS (optional future) =================
+	TrackLocation bool `json:"track_location"`
+	TrackDevice   bool `json:"track_device"`
 }
 
 type PollListResponse struct {

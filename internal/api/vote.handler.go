@@ -8,14 +8,18 @@ import (
 	"realtime-poll/internal/apperror"
 	"realtime-poll/internal/constants"
 	"realtime-poll/internal/middleware"
-	"realtime-poll/internal/repository"
 	"realtime-poll/internal/services"
+	"realtime-poll/internal/ws"
 )
+
+/* ---------------- Request ---------------- */
 
 type VoteReq struct {
 	PollID   string `json:"poll_id" binding:"required"`
 	OptionID string `json:"option_id" binding:"required"`
 }
+
+/* ---------------- Handler ---------------- */
 
 func CastVote(c *gin.Context) {
 
@@ -25,26 +29,19 @@ func CastVote(c *gin.Context) {
 		return
 	}
 
-
 	ctx := c.Request.Context()
 
-	// -------------------- identity --------------------
+	/* -------- identity -------- */
+
 	userID := c.GetString(constants.CtxUserID)
-
-	sessionID, _ := c.Cookie("session_id") // guest allowed
+	sessionID, _ := c.Cookie("session_id")
 	ip := c.ClientIP()
-
-	// -------------------- load poll --------------------
-	poll, err := repository.GetPollByID(ctx, req.PollID)
-	if err != nil {
-		middleware.Fail(c, err)
-		return
-	}
 
 	voteService := services.VoteService{}
 
-	// -------------------- cast vote --------------------
-	_, err = voteService.CastVote(
+	/* -------- 1️⃣ Save vote -------- */
+
+	result, err := voteService.CastVote(
 		ctx,
 		req.PollID,
 		req.OptionID,
@@ -57,26 +54,32 @@ func CastVote(c *gin.Context) {
 		return
 	}
 
-	// -------------------- response --------------------
-	// For realtime polls → WS will broadcast results
-	if poll.Behavior.ShowLiveResults {
-		c.JSON(http.StatusOK, gin.H{
-			"status": "vote_received",
+	/* -------- 2️⃣ Fetch updated results -------- */
+
+	pollResults, err := voteService.GetResults(ctx, req.PollID)
+	if err == nil {
+
+		// IMPORTANT: publish into the SAME WS room
+		room := ws.GlobalHub.GetRoom(req.PollID)
+
+		room.BroadcastJSON(map[string]any{
+			"type":    "vote_update",
+			"poll_id": req.PollID,
+			"version": result.Version,
+			"results": pollResults,
 		})
-		return
-	}
-	// Non realtime → return results if allowed
-	results, err := voteService.GetResults(ctx, req.PollID)
-	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"status": "vote_recorded"})
-		return
 	}
 
-	canViewResults := !poll.Vote.HideResults
+	/* -------- 3️⃣ HTTP response -------- */
 
 	c.JSON(http.StatusOK, gin.H{
-		"status":           "vote_recorded",
-		"results_visible":  canViewResults,
-		"results":          results,
+		"status": "ok",
+		"viewer": gin.H{
+			"can_vote":        false,
+			"selected_option": result.SelectedOption,
+			"already_voted":   result.AlreadyVoted,
+			"changed":         result.Changed,
+		},
+		"version": result.Version,
 	})
 }

@@ -3,6 +3,8 @@ package ws
 import (
 	"encoding/json"
 	"realtime-poll/internal/apperror"
+	"errors"
+
 )
 
 type WSResponse struct {
@@ -36,3 +38,9 @@ func SendError(conn *Client, err error) {
 	payload, _ := json.Marshal(res)
 	conn.Send(payload)
 }
+
+
+var (
+	ErrInvalidVotePayload = errors.New("invalid vote payload")
+	ErrUnknownMessageType = errors.New("unknown message type")
+)

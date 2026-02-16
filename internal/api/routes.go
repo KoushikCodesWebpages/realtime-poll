@@ -62,4 +62,5 @@ func RegisterRoutes(
 
 	// ---------------- WEBSOCKET ----------------
 	r.GET("/ws/poll/:pollId", WsPoll(hub, voteService))
+	r.GET("/ws/token", middleware.RequireAuth(), GetWSToken)
 }

@@ -1,96 +1,62 @@
 package ws
 
-import "sync"
+import (
+	"log"
+	"sync"
+)
 
+/*
+Hub manages all active rooms.
+It does NOT send messages.
+Rooms handle broadcasting themselves.
+*/
 type Hub struct {
-	mu sync.Mutex
-
-	clients map[*Client]bool
-
-	// one websocket per session
-	sessionIndex map[string]*Client
-
-	// poll rooms
+	mu    sync.RWMutex
 	rooms map[string]*Room
-
-	register   chan *Client
-	unregister chan *Client
-	broadcast  chan []byte
 }
+
+var GlobalHub = NewHub()
 
 func NewHub() *Hub {
 	return &Hub{
-		clients:      make(map[*Client]bool),
-		sessionIndex: make(map[string]*Client),
-		rooms:        make(map[string]*Room),
-		register:     make(chan *Client),
-		unregister:   make(chan *Client),
-		broadcast:    make(chan []byte),
+		rooms: make(map[string]*Room),
 	}
 }
 
+/* ---------------- Room Access ---------------- */
 
+// GetRoom returns existing room or creates one
 func (h *Hub) GetRoom(pollID string) *Room {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	if room, ok := h.rooms[pollID]; ok {
+	room, exists := h.rooms[pollID]
+	if exists {
 		return room
 	}
 
-	room := NewRoom(pollID)
-	h.rooms[pollID] = room
-	go room.Run()
+	log.Println("WS creating room:", pollID)
 
+	room = NewRoom(pollID)
+	h.rooms[pollID] = room
 	return room
 }
 
+/* ---------------- Cleanup ---------------- */
+
+// RemoveRoom deletes empty rooms
 func (h *Hub) RemoveRoom(pollID string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+
 	delete(h.rooms, pollID)
+	log.Println("WS removed empty room:", pollID)
 }
 
-func (h *Hub) Run() {
-	for {
-		select {
+/* ---------------- Debug ---------------- */
 
-		// -------- CONNECT --------
-		case client := <-h.register:
-
-			// if same session already connected -> kick old socket
-			if old, ok := h.sessionIndex[client.sessionID]; ok {
-				old.conn.Close()
-				delete(h.clients, old)
-			}
-
-			h.clients[client] = true
-			h.sessionIndex[client.sessionID] = client
-
-		// -------- DISCONNECT --------
-		case client := <-h.unregister:
-
-			if _, ok := h.clients[client]; ok {
-				delete(h.clients, client)
-
-				// remove session mapping only if same instance
-				if h.sessionIndex[client.sessionID] == client {
-					delete(h.sessionIndex, client.sessionID)
-				}
-
-				client.conn.Close()
-			}
-
-		// -------- GLOBAL BROADCAST --------
-		case msg := <-h.broadcast:
-			for c := range h.clients {
-				select {
-				case c.send <- msg:
-				default:
-					close(c.send)
-					delete(h.clients, c)
-				}
-			}
-		}
-	}
+func (h *Hub) Count() int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return len(h.rooms)
 }

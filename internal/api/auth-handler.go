@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"realtime-poll/internal/services"
 	"realtime-poll/internal/repository"
+	"realtime-poll/internal/utils"
 	"realtime-poll/internal/constants"
 	// "realtime-poll/config"
 )
@@ -24,19 +25,39 @@ type LoginReq struct {
 	Identifier string `json:"identifier"` // username OR email
 	Password   string `json:"password"`
 }
+
+func GetWSToken(c *gin.Context) {
+	userID := c.GetString(constants.CtxUserID)
+
+	token, _ := utils.GenerateWSToken(userID)
+
+	c.JSON(200, gin.H{
+		"ws_token": token,
+	})
+}
+
+
+
 func Session(c *gin.Context) {
 	uid := c.GetString(constants.CtxUserID)
 
+	if uid == "" {
+		c.JSON(200, gin.H{"user": nil})
+		return
+	}
+
 	user, err := repository.FindUserByAuthID(uid)
 	if err != nil || user == nil {
-		c.JSON(401, gin.H{"error": "not authenticated"})
+		c.JSON(200, gin.H{"user": nil})
 		return
 	}
 
 	c.JSON(200, gin.H{
-		"id": user.AuthUserID,
-		"username": user.Username,
-		"email": user.Email,
+		"user": gin.H{
+			"id":       user.AuthUserID,
+			"username": user.Username,
+			"email":    user.Email,
+		},
 	})
 }
 

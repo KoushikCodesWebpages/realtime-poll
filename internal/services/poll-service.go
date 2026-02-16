@@ -4,6 +4,7 @@ import (
 	"time"
 	"context"
 	// "errors"
+	"strings"
 	"net/url"
 	"github.com/google/uuid"
 
@@ -263,9 +264,8 @@ func (s *PollSingleService) GetPoll(
 
 	return poll, nil
 }
-
-
 type PollCreateService struct{}
+
 func (s *PollCreateService) CreatePoll(
 	ctx context.Context,
 	userID string,
@@ -273,14 +273,14 @@ func (s *PollCreateService) CreatePoll(
 	req dto.CreatePollReq,
 ) (*models.Poll, error) {
 
-	// ===== Auth check =====
+	// ---------- AUTH ----------
 	if userID == "" {
 		return nil, apperror.Unauthorized()
 	}
 
-	now := time.Now()
+	now := time.Now().UTC()
 
-	// ===== Validate time window =====
+	// ---------- TIME VALIDATION ----------
 	if req.StartAt != nil && req.EndAt != nil {
 		if req.EndAt.Before(*req.StartAt) {
 			return nil, &apperror.AppError{
@@ -290,64 +290,88 @@ func (s *PollCreateService) CreatePoll(
 		}
 	}
 
-	// ===== Build options =====
+	// ---------- OPTIONS ----------
+	if len(req.Options) < 2 {
+		return nil, apperror.Validation("minimum 2 options required")
+	}
+
 	options := make([]models.Option, 0, len(req.Options))
 	for _, opt := range req.Options {
 		options = append(options, models.Option{
 			OptionID: uuid.NewString(),
-			Text:     opt,
+			Text:     strings.TrimSpace(opt),
 			Votes:    0,
 		})
 	}
 
-	// ===== Share ID for link polls =====
+	// ---------- VISIBILITY ----------
+	requireLogin := req.Visibility != "public"
+
+	// link polls get share id
 	shareID := ""
 	if req.Visibility == "link" {
 		shareID = uuid.NewString()[:8]
 	}
 
+	// ---------- BUILD POLL ----------
 	poll := &models.Poll{
 		PollID:  uuid.NewString(),
 		OwnerID: userID,
 
+		// ================= CONTENT =================
 		Content: models.ContentSettings{
 			Question:    req.Question,
 			Description: req.Description,
 			Options:     options,
+
+			Images:      req.Images,
+			AllowCustom: req.AllowCustomOption,
+			Randomize:   req.RandomizeOptions,
 		},
 
+		// ================= ACCESS =================
 		Access: models.AccessSettings{
 			Visibility:    req.Visibility,
 			AllowedEmails: req.AllowedEmails,
-			RequireLogin:  req.Visibility != "public",
+			RequireLogin:  requireLogin,
 		},
 
+		// ================= VOTE =================
 		Vote: models.VoteSettings{
-			MaxVotesPerUser: 1,
+			MaxVotesPerUser: req.MaxVotesPerUser,
 			AllowChangeVote: req.AllowChange,
 			AnonymousVote:   req.Anonymous,
-			HideResults:     false,
-			ShowVoters:      false,
-			UniqueIP:        true,
-			UniqueSession:   true,
+			HideResults:     req.HideResultsUntilEnd,
+			ShowVoters:      req.ShowVoters,
+
+			UniqueIP:      req.UniqueIP,
+			UniqueSession: req.UniqueSession,
 		},
 
+		// ================= DISTRIBUTION =================
 		Distribution: models.DistributionSettings{
 			ShareID: shareID,
 		},
 
+		// ================= BEHAVIOR =================
 		Behavior: models.BehaviorSettings{
-			StartAt:   req.StartAt,
-			EndAt:     req.EndAt,
-			AutoClose: true,
+			StartAt:          req.StartAt,
+			EndAt:            req.EndAt,
+			AutoClose:        req.AutoClose,
+			ShowLiveResults:  req.ShowLiveResults,
+			NotifyOwner:      req.NotifyOwnerOnVote,
 		},
 
+		// ================= ANALYTICS =================
 		Analytics: models.AnalyticsSettings{
 			TrackViews:     true,
 			TrackVoters:    true,
+			TrackLocation:  false,
+			TrackDevice:    false,
 			FraudDetection: true,
 		},
 
+		// ================= STATE =================
 		State: models.PollState{
 			IsClosed:  false,
 			IsLocked:  false,
@@ -355,16 +379,18 @@ func (s *PollCreateService) CreatePoll(
 			Version:   1,
 		},
 
+		// ================= META =================
 		Meta: models.Meta{
 			CreatedAt:  now,
 			UpdatedAt:  now,
-			ExpiresAt:  req.EndAt,
+			LastVote:   nil,
 			TotalVotes: 0,
 			TotalViews: 0,
+			ExpiresAt:  req.EndAt, // derived from behavior
 		},
 	}
 
-	// ===== Insert =====
+	// ---------- INSERT ----------
 	if err := repository.CreatePoll(ctx, poll); err != nil {
 		return nil, apperror.Internal()
 	}
