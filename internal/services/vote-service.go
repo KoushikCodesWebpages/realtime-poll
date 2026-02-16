@@ -13,18 +13,19 @@ import (
 	"realtime-poll/internal/apperror"
 	"realtime-poll/internal/dto"
 )
+
 func canUserVote(poll *models.Poll, userID string) error {
 
 	switch poll.Access.Visibility {
 
 	case "authenticated":
 		if userID == "" {
-			return apperror.New(apperror.LoginRequired, "login required to vote")
+			return apperror.Unauthorized()
 		}
 
 	case "whitelist":
 		if userID == "" {
-			return apperror.New(apperror.LoginRequired, "login required to vote")
+			return apperror.Unauthorized()
 		}
 
 		allowed := false
@@ -34,8 +35,12 @@ func canUserVote(poll *models.Poll, userID string) error {
 				break
 			}
 		}
+
 		if !allowed {
-			return apperror.New(apperror.NotWhitelisted, "not allowed to vote")
+			return &apperror.AppError{
+				Code:    apperror.USER_FORBIDDEN,
+				Message: "You are not allowed to vote in this poll",
+			}
 		}
 	}
 
@@ -56,28 +61,46 @@ func (s *VoteService) CastVote(
 ) error {
 
 	poll, err := repository.GetPollByID(ctx, pollID)
-	if err != nil || poll == nil {
-		return apperror.New(apperror.PollNotFound, "poll not found")
+	if err != nil {
+		return apperror.Internal()
+	}
+	if poll == nil {
+		return &apperror.AppError{
+			Code:    apperror.POLL_NOT_FOUND,
+			Message: "Poll not found",
+		}
 	}
 
 	now := time.Now()
 
+	// ===== Time rules =====
 	if poll.Behavior.StartAt != nil && now.Before(*poll.Behavior.StartAt) {
-		return apperror.New(apperror.PollNotStarted, "poll not started")
+		return &apperror.AppError{
+			Code:    apperror.POLL_NOT_STARTED,
+			Message: "Voting has not started yet",
+		}
 	}
 
 	if poll.Behavior.EndAt != nil && now.After(*poll.Behavior.EndAt) {
-		return apperror.New(apperror.PollEnded, "poll ended")
+		return &apperror.AppError{
+			Code:    apperror.POLL_ENDED,
+			Message: "Voting has ended",
+		}
 	}
 
 	if poll.State.IsClosed {
-		return apperror.New(apperror.PollClosed, "poll closed")
+		return &apperror.AppError{
+			Code:    apperror.POLL_CLOSED,
+			Message: "Poll is closed",
+		}
 	}
 
+	// ===== Permission rules =====
 	if err := canUserVote(poll, userID); err != nil {
 		return err
 	}
 
+	// ===== Validate option =====
 	valid := false
 	for _, opt := range poll.Content.Options {
 		if opt.OptionID == optionID {
@@ -86,7 +109,10 @@ func (s *VoteService) CastVote(
 		}
 	}
 	if !valid {
-		return apperror.New(apperror.VoteInvalidOption, "invalid option")
+		return &apperror.AppError{
+			Code:    apperror.VALIDATION_FAILED,
+			Message: "Invalid option",
+		}
 	}
 
 	identity := userID
@@ -106,23 +132,36 @@ func (s *VoteService) CastVote(
 		UpdatedAt: now,
 	}
 
+	// ===== Try insert =====
 	err = repository.InsertVoteAtomic(ctx, vote)
 
 	if err == nil {
-		return repository.IncrementOptionVote(ctx, pollID, optionID, 1)
+		if err := repository.IncrementOptionVote(ctx, pollID, optionID, 1); err != nil {
+			return apperror.Internal()
+		}
+		return nil
 	}
 
+	// ===== Not duplicate => infra failure =====
 	if !repository.IsDuplicateKey(err) {
-		return err
+		return apperror.Internal()
 	}
 
+	// ===== Already voted =====
 	if !poll.Vote.AllowChangeVote {
-		return apperror.New(apperror.VoteAlreadyCast, "already voted")
+		return &apperror.AppError{
+			Code:    apperror.POLL_ALREADY_VOTED,
+			Message: "You already voted",
+		}
 	}
 
+	// ===== Change vote =====
 	existing, err := repository.GetVoteByIdentity(ctx, pollID, identity)
-	if err != nil || existing == nil {
-		return apperror.New(apperror.VoteNotAllowed, "vote not found")
+	if err != nil {
+		return apperror.Internal()
+	}
+	if existing == nil {
+		return apperror.Internal()
 	}
 
 	if existing.OptionID == optionID {
@@ -130,14 +169,18 @@ func (s *VoteService) CastVote(
 	}
 
 	if err := repository.IncrementOptionVote(ctx, pollID, existing.OptionID, -1); err != nil {
-		return err
+		return apperror.Internal()
 	}
 
 	if err := repository.IncrementOptionVote(ctx, pollID, optionID, 1); err != nil {
-		return err
+		return apperror.Internal()
 	}
 
-	return repository.UpdateVoteOption(ctx, existing.VoteID, optionID)
+	if err := repository.UpdateVoteOption(ctx, existing.VoteID, optionID); err != nil {
+		return apperror.Internal()
+	}
+
+	return nil
 }
 
 func (s *VoteService) CastVoteRealtime(
@@ -151,12 +194,18 @@ func (s *VoteService) CastVoteRealtime(
 	return s.CastVote(ctx, pollID, optionID, userID, sessionID, ip)
 }
 
-
 func (s *VoteService) GetResults(ctx context.Context, pollID string) ([]dto.OptionResult, error) {
 
 	poll, err := repository.GetPollByID(ctx, pollID)
-	if err != nil || poll == nil {
-		return nil, apperror.New(apperror.PollNotFound, "poll not found")
+	if err != nil {
+		return nil, apperror.Internal()
+	}
+
+	if poll == nil {
+		return nil, &apperror.AppError{
+			Code:    apperror.POLL_NOT_FOUND,
+			Message: "Poll not found",
+		}
 	}
 
 	results := make([]dto.OptionResult, 0, len(poll.Content.Options))

@@ -96,7 +96,7 @@ func WsPoll(hub *ws.Hub, voteService *services.VoteService) gin.HandlerFunc {
 			if err != nil {
 
 				// structured apperror
-				if appErr, ok := err.(*apperror.Error); ok {
+				if appErr, ok := err.(*apperror.AppError); ok {
 					sendReject(client, string(appErr.Code), appErr.Message)
 				} else {
 					sendReject(client, "VOTE_FAILED", err.Error())

@@ -3,7 +3,7 @@ package services
 import (
 	"time"
 	"context"
-	"errors"
+	// "errors"
 	"net/url"
 	"github.com/google/uuid"
 
@@ -21,65 +21,92 @@ import (
 
 type PollEditService struct{}
 
-var (
-	ErrPollNotFound     = errors.New("POLL_NOT_FOUND")
-	ErrNotOwner         = errors.New("NOT_OWNER")
-	ErrPollLocked       = errors.New("POLL_LOCKED")
-	ErrPollHasVotes     = errors.New("POLL_HAS_VOTES")
-	ErrAlreadyDeleted   = errors.New("ALREADY_DELETED")
-	ErrForceDeleteFirst = errors.New("SOFT_DELETE_REQUIRED")
-)
 
 func (s *PollEditService) PatchPoll(ctx context.Context, userID, pollID string, update bson.M) error {
 
 	poll, err := repository.GetPollByID(ctx, pollID)
-	if err != nil || poll == nil {
-		return ErrPollNotFound
+	if err != nil {
+		return apperror.Internal()
+	}
+	if poll == nil {
+		return &apperror.AppError{
+			Code:    apperror.POLL_NOT_FOUND,
+			Message: "Poll not found",
+		}
 	}
 
 	if poll.OwnerID != userID {
-		return ErrNotOwner
+		return &apperror.AppError{
+			Code:    apperror.USER_FORBIDDEN,
+			Message: "You are not the owner of this poll",
+		}
 	}
 
 	if poll.State.IsLocked || poll.State.IsClosed {
-		return ErrPollLocked
+		return &apperror.AppError{
+			Code:    apperror.POLL_EDIT_NOT_ALLOWED,
+			Message: "Poll cannot be edited",
+		}
 	}
 
 	if poll.Meta.TotalVotes > 0 {
-		return ErrPollHasVotes
+		return &apperror.AppError{
+			Code:    apperror.POLL_VOTING_STARTED,
+			Message: "Poll already has votes",
+		}
 	}
 
 	update["meta.updated_at"] = time.Now()
 
-	return repository.UpdatePollFields(ctx, pollID, update)
+	if err := repository.UpdatePollFields(ctx, pollID, update); err != nil {
+		return apperror.Internal()
+	}
+
+	return nil
 }
 
 func (s *PollEditService) PutPoll(ctx context.Context, userID, pollID string, update bson.M) error {
 
 	poll, err := repository.GetPollByID(ctx, pollID)
-	if err != nil || poll == nil {
-		return ErrPollNotFound
+	if err != nil {
+		return apperror.Internal()
+	}
+	if poll == nil {
+		return &apperror.AppError{
+			Code:    apperror.POLL_NOT_FOUND,
+			Message: "Poll not found",
+		}
 	}
 
 	if poll.OwnerID != userID {
-		return ErrNotOwner
+		return &apperror.AppError{
+			Code:    apperror.USER_FORBIDDEN,
+			Message: "You are not the owner of this poll",
+		}
 	}
 
-	// immutable after participation
 	if poll.Meta.TotalVotes > 0 {
-		return ErrPollHasVotes
+		return &apperror.AppError{
+			Code:    apperror.POLL_VOTING_STARTED,
+			Message: "Poll already has votes",
+		}
 	}
 
-	// locked or closed polls cannot be replaced
 	if poll.State.IsLocked || poll.State.IsClosed {
-		return ErrPollLocked
+		return &apperror.AppError{
+			Code:    apperror.POLL_EDIT_NOT_ALLOWED,
+			Message: "Poll cannot be replaced",
+		}
 	}
 
 	update["meta.updated_at"] = time.Now()
 
-	return repository.UpdatePollFields(ctx, pollID, update)
-}
+	if err := repository.UpdatePollFields(ctx, pollID, update); err != nil {
+		return apperror.Internal()
+	}
 
+	return nil
+}
 
 func (s *PollEditService) DeletePoll(
 	ctx context.Context,
@@ -88,35 +115,55 @@ func (s *PollEditService) DeletePoll(
 	force bool,
 ) error {
 
-	// 🔥 use RAW fetch so deleted polls can be accessed
 	poll, err := repository.GetPollByIDRaw(ctx, pollID)
-	if err != nil || poll == nil {
-		return errors.New("poll not found")
+	if err != nil {
+		return apperror.Internal()
+	}
+	if poll == nil {
+		return &apperror.AppError{
+			Code:    apperror.POLL_NOT_FOUND,
+			Message: "Poll not found",
+		}
 	}
 
 	if poll.OwnerID != userID {
-		return errors.New("not allowed")
+		return &apperror.AppError{
+			Code:    apperror.USER_FORBIDDEN,
+			Message: "You are not allowed to delete this poll",
+		}
 	}
 
 	if force {
 		if !poll.State.IsDeleted {
-			return errors.New("poll must be soft deleted first")
+			return &apperror.AppError{
+				Code:    apperror.VALIDATION_FAILED,
+				Message: "Poll must be soft deleted first",
+			}
 		}
-		return repository.HardDeletePoll(ctx, pollID)
+		if err := repository.HardDeletePoll(ctx, pollID); err != nil {
+			return apperror.Internal()
+		}
+		return nil
 	}
 
 	if poll.State.IsDeleted {
-		return errors.New("already deleted")
+		return &apperror.AppError{
+			Code:    apperror.POLL_NOT_FOUND,
+			Message: "Poll already deleted",
+		}
 	}
 
-	return repository.SoftDeletePoll(ctx, pollID)
+	if err := repository.SoftDeletePoll(ctx, pollID); err != nil {
+		return apperror.Internal()
+	}
+
+	return nil
 }
 
 
 
 
 type PollGetService struct{}
-
 func (s *PollGetService) GetMyPollsPaginated(
 	ctx context.Context,
 	userID string,
@@ -126,12 +173,19 @@ func (s *PollGetService) GetMyPollsPaginated(
 	direction string,
 ) (*dto.PollListResponse, error) {
 
-	polls, err := repository.GetPollsByOwnerPaginated(ctx, userID, filter, cursor, direction)
-	if err != nil {
-		return nil, err
+	if userID == "" {
+		return nil, apperror.Unauthorized()
 	}
 
-	total, _ := repository.CountPollsByOwner(ctx, userID)
+	polls, err := repository.GetPollsByOwnerPaginated(ctx, userID, filter, cursor, direction)
+	if err != nil {
+		return nil, apperror.Internal()
+	}
+
+	total, err := repository.CountPollsByOwner(ctx, userID)
+	if err != nil {
+		return nil, apperror.Internal()
+	}
 
 	base := "/b1/poll/mine"
 
@@ -159,15 +213,20 @@ func (s *PollGetService) GetMyPollsPaginated(
 	}, nil
 }
 
-
 func (s *PollGetService) GetMyPolls(ctx context.Context, userID string) ([]models.Poll, error) {
 
 	if userID == "" {
-		return nil, errors.New("unauthorized")
+		return nil, apperror.Unauthorized()
 	}
 
-	return repository.GetPollsByOwner(ctx, userID)
+	polls, err := repository.GetPollsByOwner(ctx, userID)
+	if err != nil {
+		return nil, apperror.Internal()
+	}
+
+	return polls, nil
 }
+
 
 type PollSingleService struct{}
 
@@ -179,16 +238,22 @@ func (s *PollSingleService) GetPoll(
 
 	poll, err := repository.GetPollByID(ctx, pollID)
 	if err != nil {
-		return nil, err
+		return nil, apperror.Internal()
 	}
 
 	if poll == nil {
-		return nil, errors.New("poll not found")
+		return nil, &apperror.AppError{
+			Code:    apperror.POLL_NOT_FOUND,
+			Message: "Poll not found",
+		}
 	}
 
-	// owner always allowed (visibility rules later)
+	// owner only (for now)
 	if poll.OwnerID != userID {
-		return nil, errors.New("not allowed")
+		return nil, &apperror.AppError{
+			Code:    apperror.USER_FORBIDDEN,
+			Message: "You are not allowed to access this poll",
+		}
 	}
 
 	// auto close expired

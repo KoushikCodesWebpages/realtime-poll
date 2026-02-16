@@ -7,6 +7,7 @@ import (
 
 	"realtime-poll/internal/apperror"
 	"realtime-poll/internal/constants"
+	"realtime-poll/internal/middleware"
 	"realtime-poll/internal/repository"
 	"realtime-poll/internal/services"
 )
@@ -20,10 +21,10 @@ func CastVote(c *gin.Context) {
 
 	var req VoteReq
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest,
-			apperror.New(apperror.TokenMalformed, "invalid request body"))
+		middleware.Fail(c, apperror.BadRequest("Invalid request body"))
 		return
 	}
+
 
 	ctx := c.Request.Context()
 
@@ -35,9 +36,8 @@ func CastVote(c *gin.Context) {
 
 	// -------------------- load poll --------------------
 	poll, err := repository.GetPollByID(ctx, req.PollID)
-	if err != nil || poll == nil {
-		c.JSON(http.StatusNotFound,
-			apperror.New(apperror.PollNotFound, "poll not found"))
+	if err != nil {
+		middleware.Fail(c, err)
 		return
 	}
 
@@ -53,8 +53,7 @@ func CastVote(c *gin.Context) {
 		ip,
 	)
 	if err != nil {
-		c.JSON(http.StatusForbidden,
-			apperror.New(apperror.PollNotAllowed, err.Error()))
+		middleware.Fail(c, err)
 		return
 	}
 

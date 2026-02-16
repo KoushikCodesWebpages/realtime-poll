@@ -5,10 +5,16 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
+	// "errors
 	"os"
 	"time"
+	"strings"
+
+
+	"realtime-poll/internal/models"
+	"realtime-poll/internal/apperror"
 )
+
 
 type SharePayload struct {
 	PollID string `json:"pid"`
@@ -26,68 +32,61 @@ func getSecret() string {
 	return s
 }
 
-func GenerateShareToken(pollID string, mode string, duration time.Duration) (string, error) {
+func GenerateShareToken(pollID string, mode string, minutes int64) (string, error) {
 
-	payload := SharePayload{
+	claims := models.ShareTokenClaims{
 		PollID: pollID,
 		Mode:   mode,
-		Exp:    time.Now().Add(duration).Unix(),
 	}
 
-	data, err := json.Marshal(payload)
+	if mode == "timed" {
+		claims.Exp = time.Now().Add(time.Duration(minutes) * time.Minute).Unix()
+	}
+
+	payload, err := json.Marshal(claims)
 	if err != nil {
-		return "", err
+		return "", apperror.Internal()
 	}
 
-	payloadB64 := base64.RawURLEncoding.EncodeToString(data)
+	secretStr := os.Getenv("SHARE_TOKEN_SECRET")
+	if secretStr == "" {
+		return "", apperror.Internal()
+	}
+	secret := []byte(secretStr)
 
-	sig := sign(payloadB64)
+	// sign RAW payload
+	signature := sign(payload, secret)
 
-	token := payloadB64 + "." + sig
-	return token, nil
+	// encode both parts
+	payloadB64 := base64.RawURLEncoding.EncodeToString(payload)
+	sigB64 := base64.RawURLEncoding.EncodeToString(signature)
+
+	return payloadB64 + "." + sigB64, nil
 }
 
-func ParseShareToken(token string) (*SharePayload, error) {
 
-	parts := split(token)
-	if len(parts) != 2 {
-		return nil, errors.New("malformed token")
-	}
+func sign(data []byte, secret []byte) []byte {
+	h := hmac.New(sha256.New, secret)
+	h.Write(data)
+	return h.Sum(nil)
+}
+func verify(payloadB64, sigB64 string, secret []byte) bool {
 
-	payloadB64 := parts[0]
-	sig := parts[1]
-
-	if !verify(payloadB64, sig) {
-		return nil, errors.New("invalid signature")
-	}
-
-	data, err := base64.RawURLEncoding.DecodeString(payloadB64)
+	payload, err := base64.RawURLEncoding.DecodeString(payloadB64)
 	if err != nil {
-		return nil, errors.New("invalid payload encoding")
+		return false
 	}
 
-	var payload SharePayload
-	if err := json.Unmarshal(data, &payload); err != nil {
-		return nil, errors.New("invalid payload")
+	sig, err := base64.RawURLEncoding.DecodeString(sigB64)
+	if err != nil {
+		return false
 	}
 
-	if time.Now().Unix() > payload.Exp {
-		return nil, errors.New("token expired")
-	}
+	expected := sign(payload, secret)
 
-	return &payload, nil
+	return hmac.Equal(sig, expected)
 }
 
-func sign(payload string) string {
-	h := hmac.New(sha256.New, shareSecret)
-	h.Write([]byte(payload))
-	return base64.RawURLEncoding.EncodeToString(h.Sum(nil))
-}
-
-func verify(payload, sig string) bool {
-	expected := sign(payload)
-	return hmac.Equal([]byte(expected), []byte(sig))
-}
 
 func split(token string) []string {
 	for i := 0; i < len(token); i++ {
@@ -98,3 +97,43 @@ func split(token string) []string {
 	return nil
 }
 
+func VerifyShareToken(token string) (*models.ShareTokenClaims, error) {
+
+	parts := strings.Split(token, ".")
+	if len(parts) != 2 {
+		return nil, apperror.TokenInvalid()
+	}
+
+	payload, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		return nil, apperror.TokenInvalid()
+	}
+
+	sig, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return nil, apperror.TokenInvalid()
+	}
+
+	secretStr := os.Getenv("SHARE_TOKEN_SECRET")
+	if secretStr == "" {
+		return nil, apperror.Internal()
+	}
+	secret := []byte(secretStr)
+
+	expected := sign(payload, secret)
+
+	if !hmac.Equal(sig, expected) {
+		return nil, apperror.TokenInvalid()
+	}
+
+	var claims models.ShareTokenClaims
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return nil, apperror.TokenInvalid()
+	}
+
+	if claims.Mode == "timed" && time.Now().Unix() > claims.Exp {
+		return nil, apperror.TokenExpired()
+	}
+
+	return &claims, nil
+}
