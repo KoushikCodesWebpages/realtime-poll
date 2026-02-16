@@ -34,7 +34,7 @@ func RegisterRoutes(r *gin.Engine) {
 		// Poll APIs
 		poll := api.Group("/poll", middleware.RequireAuth(),)
 		{
-			poll.POST("/",CreatePoll) // protected
+			poll.POST("/create",CreatePoll) // protected
 			poll.GET("/mine", GetMyPolls)
 			poll.GET("/:poll_id", GetPoll)
 
