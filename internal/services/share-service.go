@@ -3,7 +3,6 @@ package services
 import (
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"os"
 	"time"
 	"strings"
@@ -12,6 +11,7 @@ import (
 	"crypto/sha256"
 
 	"realtime-poll/internal/models"
+	"realtime-poll/internal/apperror"
 )
 
 func sign(data []byte, secret []byte) []byte {
@@ -41,29 +41,40 @@ func GenerateShareToken(pollID string, mode string, minutes int64) (string, erro
 
 	return token, nil
 }
+
 func VerifyShareToken(token string) (*models.ShareTokenClaims, error) {
 
 	parts := strings.Split(token, ".")
 	if len(parts) != 2 {
-		return nil, errors.New("invalid token")
+		return nil, apperror.New(apperror.TokenMalformed, "Malformed share token")
 	}
 
-	payload, _ := base64.RawURLEncoding.DecodeString(parts[0])
-	sig, _ := base64.RawURLEncoding.DecodeString(parts[1])
+	payload, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		return nil, apperror.New(apperror.TokenMalformed, "Invalid payload encoding")
+	}
+
+	sig, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return nil, apperror.New(apperror.TokenMalformed, "Invalid signature encoding")
+	}
 
 	secret := []byte(os.Getenv("SHARE_TOKEN_SECRET"))
 	expected := sign(payload, secret)
 
 	if !hmac.Equal(sig, expected) {
-		return nil, errors.New("signature mismatch")
+		return nil, apperror.New(apperror.TokenInvalid, "Signature verification failed")
 	}
 
 	var claims models.ShareTokenClaims
-	json.Unmarshal(payload, &claims)
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return nil, apperror.New(apperror.TokenMalformed, "Invalid token data")
+	}
 
 	if claims.Mode == "timed" && time.Now().Unix() > claims.Exp {
-		return nil, errors.New("link expired")
+		return nil, apperror.New(apperror.TokenExpired, "Share link expired")
 	}
 
 	return &claims, nil
 }
+
