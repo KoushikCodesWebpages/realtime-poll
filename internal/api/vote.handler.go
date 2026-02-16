@@ -65,7 +65,6 @@ func CastVote(c *gin.Context) {
 		})
 		return
 	}
-
 	// Non realtime → return results if allowed
 	results, err := voteService.GetResults(ctx, req.PollID)
 	if err != nil {
