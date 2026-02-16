@@ -20,16 +20,32 @@ import (
 
 type PollEditService struct{}
 
+var (
+	ErrPollNotFound     = errors.New("POLL_NOT_FOUND")
+	ErrNotOwner         = errors.New("NOT_OWNER")
+	ErrPollLocked       = errors.New("POLL_LOCKED")
+	ErrPollHasVotes     = errors.New("POLL_HAS_VOTES")
+	ErrAlreadyDeleted   = errors.New("ALREADY_DELETED")
+	ErrForceDeleteFirst = errors.New("SOFT_DELETE_REQUIRED")
+)
 
 func (s *PollEditService) PatchPoll(ctx context.Context, userID, pollID string, update bson.M) error {
 
 	poll, err := repository.GetPollByID(ctx, pollID)
 	if err != nil || poll == nil {
-		return errors.New("poll not found")
+		return ErrPollNotFound
 	}
 
 	if poll.OwnerID != userID {
-		return errors.New("not allowed")
+		return ErrNotOwner
+	}
+
+	if poll.State.IsLocked || poll.State.IsClosed {
+		return ErrPollLocked
+	}
+
+	if poll.Meta.TotalVotes > 0 {
+		return ErrPollHasVotes
 	}
 
 	update["meta.updated_at"] = time.Now()
@@ -41,17 +57,28 @@ func (s *PollEditService) PutPoll(ctx context.Context, userID, pollID string, up
 
 	poll, err := repository.GetPollByID(ctx, pollID)
 	if err != nil || poll == nil {
-		return errors.New("poll not found")
+		return ErrPollNotFound
 	}
 
 	if poll.OwnerID != userID {
-		return errors.New("not allowed")
+		return ErrNotOwner
+	}
+
+	// immutable after participation
+	if poll.Meta.TotalVotes > 0 {
+		return ErrPollHasVotes
+	}
+
+	// locked or closed polls cannot be replaced
+	if poll.State.IsLocked || poll.State.IsClosed {
+		return ErrPollLocked
 	}
 
 	update["meta.updated_at"] = time.Now()
 
 	return repository.UpdatePollFields(ctx, pollID, update)
 }
+
 
 func (s *PollEditService) DeletePoll(
 	ctx context.Context,
