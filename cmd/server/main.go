@@ -7,13 +7,18 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gin-gonic/gin"
+	"github.com/gin-contrib/cors"
+
 	"realtime-poll/config"
 	"realtime-poll/internal/api"
 	"realtime-poll/internal/db"
 	"realtime-poll/internal/middleware"
+	
 
-	"github.com/gin-contrib/cors"
-	"github.com/gin-gonic/gin"
+	"realtime-poll/internal/services"
+	"realtime-poll/internal/ws"
+
 )
 
 func main() {
@@ -75,9 +80,13 @@ func main() {
 		AllowCredentials: true,
 		MaxAge: 12 * time.Hour,
 	}))
+	// ---- create shared dependencies ----
+	voteService := &services.VoteService{}
+	hub := ws.NewHub()
 
 	// Routes
-	api.RegisterRoutes(r)
+		// ---- register routes ----
+	api.RegisterRoutes(r, voteService, hub)
 
 	port := os.Getenv("PORT")
 	if port == "" {

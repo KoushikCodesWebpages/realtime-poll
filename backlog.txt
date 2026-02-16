@@ -30,6 +30,11 @@ Allow changing:
 description
 end time (optional decision)
 
+completed
+
+
+
+
 2. WebSocket Poll Rooms
 Users viewing a poll must join a realtime room:
 

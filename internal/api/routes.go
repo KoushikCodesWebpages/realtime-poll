@@ -1,19 +1,24 @@
 package api
 
 import (
-	"realtime-poll/internal/ws"
-	"realtime-poll/internal/utils"
-	"realtime-poll/internal/middleware"
-
 	"github.com/gin-gonic/gin"
+
+	"realtime-poll/internal/middleware"
+	"realtime-poll/internal/services"
+	"realtime-poll/internal/utils"
+	"realtime-poll/internal/ws"
 )
-func RegisterRoutes(r *gin.Engine) {
+
+func RegisterRoutes(
+	r *gin.Engine,
+	voteService *services.VoteService,
+	hub *ws.Hub,
+) {
 
 	// Root info
 	r.GET("/", func(c *gin.Context) {
 		c.JSON(200, utils.GetRootDoc())
 	})
-
 
 	// Health check
 	r.GET("/health", func(c *gin.Context) {
@@ -22,7 +27,7 @@ func RegisterRoutes(r *gin.Engine) {
 
 	api := r.Group("/b1")
 	{
-		// Auth
+		// ---------------- AUTH ----------------
 		auth := api.Group("/auth")
 		{
 			auth.POST("/register", Register)
@@ -31,26 +36,25 @@ func RegisterRoutes(r *gin.Engine) {
 			auth.GET("/session", middleware.RequireAuth(), Session)
 		}
 
-		// Poll APIs
-		poll := api.Group("/poll", middleware.RequireAuth(),)
+		// ---------------- POLL ----------------
+		poll := api.Group("/poll", middleware.RequireAuth())
 		{
-			poll.POST("/create",CreatePoll) // protected
+			poll.POST("/create", CreatePoll)
 			poll.GET("/mine", GetMyPolls)
 			poll.GET("/:poll_id", GetPoll)
 
 			poll.PUT("/:poll_id", PutPoll)
 			poll.PATCH("/:poll_id", PatchPoll)
+			poll.DELETE("/:poll_id", DeletePoll)
 
-			poll.DELETE("/:poll_id",DeletePoll)
-
-			poll.POST("/:poll_id/share",GenerateShareLink)
-			
+			poll.POST("/:poll_id/share", GenerateShareLink)
 		}
 
-		// Websocket	
-		api.GET("/ws/:id", ws.HandleWS)
-		api.POST("/vote", middleware.OptionalAuth(), CastVote) 
-		api.GET("/poll/share", ViewSharedPoll) 
+		// ---------------- VOTING ----------------
+		api.POST("/vote", middleware.OptionalAuth(), CastVote)
+		api.GET("/poll/share", ViewSharedPoll)
 	}
 
+	// ---------------- WEBSOCKET ----------------
+	r.GET("/ws/poll/:pollId", WsPoll(hub, voteService))
 }

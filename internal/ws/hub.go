@@ -1,22 +1,35 @@
 package ws
 
+import "sync"
+
 type Hub struct {
-	rooms map[string]map[*Client]bool
+	rooms map[string]*Room
+	mu    sync.RWMutex
 }
 
-var H = Hub{
-	rooms: make(map[string]map[*Client]bool),
-}
-
-func (h *Hub) Join(room string, c *Client) {
-	if h.rooms[room] == nil {
-		h.rooms[room] = make(map[*Client]bool)
+func NewHub() *Hub {
+	return &Hub{
+		rooms: make(map[string]*Room),
 	}
-	h.rooms[room][c] = true
 }
 
-func (h *Hub) Broadcast(room string, msg []byte) {
-	for c := range h.rooms[room] {
-		c.Conn.WriteMessage(1, msg)
+func (h *Hub) GetRoom(pollID string) *Room {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if room, ok := h.rooms[pollID]; ok {
+		return room
 	}
+
+	room := NewRoom(pollID)
+	h.rooms[pollID] = room
+	go room.Run()
+
+	return room
+}
+
+func (h *Hub) RemoveRoom(pollID string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	delete(h.rooms, pollID)
 }

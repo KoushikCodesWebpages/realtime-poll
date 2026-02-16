@@ -7,9 +7,11 @@ import (
 
 	"realtime-poll/internal/models"
 	"realtime-poll/internal/repository"
+	"realtime-poll/internal/ws"
 )
 
 type VoteService struct{}
+
 
 func (s *VoteService) CastVote(
 	ctx context.Context,
@@ -139,4 +141,34 @@ func (s *VoteService) CastVote(
 	}
 
 	return repository.UpdateVote(ctx, existing.ID, optionID)
+}
+
+func (s *VoteService) CastVoteRealtime(
+	ctx context.Context,
+	pollID string,
+	optionID string,
+	userID string,
+	sessionID string,
+	ip string,
+) error {
+	return s.CastVote(ctx, pollID, optionID, userID, sessionID, ip)
+}
+
+func (s *VoteService) GetResults(ctx context.Context, pollID string) ([]ws.OptionResult, error) {
+
+	poll, err := repository.GetPollByID(ctx, pollID)
+	if err != nil || poll == nil {
+		return nil, errors.New("poll not found")
+	}
+
+	results := make([]ws.OptionResult, 0, len(poll.Content.Options))
+
+	for _, opt := range poll.Content.Options {
+		results = append(results, ws.OptionResult{
+			OptionID: opt.OptionID,
+			Votes:    opt.Votes,
+		})
+	}
+
+	return results, nil
 }
