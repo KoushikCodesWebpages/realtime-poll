@@ -6,6 +6,20 @@ import (
 	"realtime-poll/internal/models"
 )
 
+
+
+type VoteUpdate struct {
+	Type    string        `json:"type"`
+	PollID  string        `json:"poll_id"`
+	Results []OptionResult `json:"results"`
+}
+
+type OptionResult struct {
+	OptionID string `json:"option_id"`
+	Votes    int    `json:"votes"`
+}
+
+
 type CreatePollReq struct {
 	Question    string   `json:"question" binding:"required,min=5,max=200"`
 	Description string   `json:"description,omitempty"`

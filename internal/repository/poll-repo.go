@@ -287,3 +287,11 @@ func IncrementVote(pollID, optionID string) error {
 	)
 	return err
 }
+
+func ClosePoll(ctx context.Context, pollID string) error {
+	_, err := db.DB.Collection("polls").UpdateOne(ctx,
+		bson.M{"poll_id": pollID},
+		bson.M{"$set": bson.M{"state.is_closed": true}},
+	)
+	return err
+}

@@ -12,6 +12,7 @@ import (
 	"realtime-poll/internal/utils"
 	"realtime-poll/internal/models"
 	"realtime-poll/internal/dto"
+	"realtime-poll/internal/apperror"
 	"realtime-poll/internal/repository"
 
 	
@@ -200,7 +201,6 @@ func (s *PollSingleService) GetPoll(
 
 
 type PollCreateService struct{}
-
 func (s *PollCreateService) CreatePoll(
 	ctx context.Context,
 	userID string,
@@ -208,20 +208,24 @@ func (s *PollCreateService) CreatePoll(
 	req dto.CreatePollReq,
 ) (*models.Poll, error) {
 
+	// ===== Auth check =====
 	if userID == "" {
-		return nil, errors.New("unauthorized")
+		return nil, apperror.Unauthorized()
 	}
 
 	now := time.Now()
 
-	// validate time window
+	// ===== Validate time window =====
 	if req.StartAt != nil && req.EndAt != nil {
 		if req.EndAt.Before(*req.StartAt) {
-			return nil, errors.New("end_at cannot be before start_at")
+			return nil, &apperror.AppError{
+				Code:    apperror.VALIDATION_FAILED,
+				Message: "end_at cannot be before start_at",
+			}
 		}
 	}
 
-	// build options
+	// ===== Build options =====
 	options := make([]models.Option, 0, len(req.Options))
 	for _, opt := range req.Options {
 		options = append(options, models.Option{
@@ -231,7 +235,7 @@ func (s *PollCreateService) CreatePoll(
 		})
 	}
 
-	// generate share id only for link polls
+	// ===== Share ID for link polls =====
 	shareID := ""
 	if req.Visibility == "link" {
 		shareID = uuid.NewString()[:8]
@@ -274,16 +278,16 @@ func (s *PollCreateService) CreatePoll(
 		},
 
 		Analytics: models.AnalyticsSettings{
-			TrackViews:    true,
-			TrackVoters:   true,
+			TrackViews:     true,
+			TrackVoters:    true,
 			FraudDetection: true,
 		},
 
 		State: models.PollState{
-			IsClosed: false,
-			IsLocked: false,
+			IsClosed:  false,
+			IsLocked:  false,
 			IsDeleted: false,
-			Version:  1,
+			Version:   1,
 		},
 
 		Meta: models.Meta{
@@ -295,8 +299,9 @@ func (s *PollCreateService) CreatePoll(
 		},
 	}
 
+	// ===== Insert =====
 	if err := repository.CreatePoll(ctx, poll); err != nil {
-		return nil, err
+		return nil, apperror.Internal()
 	}
 
 	return poll, nil

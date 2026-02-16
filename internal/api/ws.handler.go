@@ -1,7 +1,7 @@
 package api
 
 import (
-	"encoding/json"
+	// "encoding/json"
 	"net/http"
 	"context"
 	"time"
@@ -12,6 +12,8 @@ import (
 	"realtime-poll/internal/repository"
 	"realtime-poll/internal/services"
 	"realtime-poll/internal/ws"
+	"realtime-poll/internal/dto"
+	"realtime-poll/internal/apperror"
 )
 
 var upgrader = websocket.Upgrader{
@@ -54,6 +56,8 @@ func WsPoll(hub *ws.Hub, voteService *services.VoteService) gin.HandlerFunc {
 
 		go client.WritePump()
 		go sendInitialState(client, voteService, pollID, userID, sessionCookie)
+
+
 		// -------------------- READ LOOP --------------------
 		go client.ReadPump(func(userID, optionID, pollID string) {
 
@@ -62,14 +66,23 @@ func WsPoll(hub *ws.Hub, voteService *services.VoteService) gin.HandlerFunc {
 			// load poll
 			poll, err := repository.GetPollByID(ctx, pollID)
 			if err != nil || poll == nil {
+				sendReject(client, "POLL_NOT_FOUND", "poll not found")
 				return
 			}
 
-			// WS voting only allowed for realtime polls
+			// lifecycle FIRST
+			if poll.State.IsClosed ||
+			(poll.Behavior.EndAt != nil && time.Now().After(*poll.Behavior.EndAt)) {
+
+				sendReject(client, "POLL_ENDED", "poll has ended")
+				return
+			}
+
+			// realtime capability AFTER lifecycle
 			if !poll.Behavior.ShowLiveResults {
+				sendReject(client, "NOT_REALTIME", "this poll does not support live voting")
 				return
 			}
-
 			// cast vote
 			err = voteService.CastVoteRealtime(
 				ctx,
@@ -79,44 +92,55 @@ func WsPoll(hub *ws.Hub, voteService *services.VoteService) gin.HandlerFunc {
 				sessionCookie,
 				ip,
 			)
+
 			if err != nil {
+
+				// structured apperror
+				if appErr, ok := err.(*apperror.Error); ok {
+					sendReject(client, string(appErr.Code), appErr.Message)
+				} else {
+					sendReject(client, "VOTE_FAILED", err.Error())
+				}
 				return
 			}
 
 			now := time.Now()
 			pollEnded := poll.Behavior.EndAt != nil && now.After(*poll.Behavior.EndAt)
 
-			// ---------------- HIDDEN RESULTS ----------------
+			// hidden ballot
 			if poll.Vote.HideResults && !pollEnded {
 
-				ack := map[string]any{
+				client.SendJSON(map[string]any{
 					"type": "vote_ack",
-				}
-
-				bytes, _ := json.Marshal(ack)
-
-				// send only to voter
-				client.Send(bytes)
+				})
 				return
 			}
 
-			// ---------------- SEND RESULTS ----------------
+			// results
 			results, err := voteService.GetResults(ctx, pollID)
 			if err != nil {
+				sendReject(client, "RESULT_ERROR", "failed to fetch results")
 				return
 			}
 
-			payload := ws.VoteUpdate{
+			room.BroadcastJSON(dto.VoteUpdate{
 				Type:    "vote_update",
 				PollID:  pollID,
 				Results: results,
-			}
-
-			bytes, _ := json.Marshal(payload)
-			room.Broadcast(bytes)
+			})
 		})
 	}
 }
+
+func sendReject(client *ws.Client, code string, message string) {
+	payload := map[string]any{
+		"type":    "vote_rejected",
+		"code":    code,
+		"message": message,
+	}
+	client.SendJSON(payload)
+}
+
 
 func sendInitialState(client *ws.Client, voteService *services.VoteService, pollID, userID, sessionID string) {
 

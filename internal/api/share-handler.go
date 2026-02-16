@@ -26,7 +26,8 @@ import (
 
 	"realtime-poll/internal/apperror"
 	"realtime-poll/internal/repository"
-		"realtime-poll/internal/constants"
+	"realtime-poll/internal/constants"
+	"realtime-poll/internal/services"
 	"realtime-poll/internal/utils"
 )
 
@@ -163,16 +164,7 @@ func ViewSharedPoll(c *gin.Context) {
 	}
 
 	// -------------------- 6) compute viewer state --------------------
-	now := time.Now()
-
-	started := poll.Behavior.StartAt == nil || now.After(*poll.Behavior.StartAt)
-	ended := poll.Behavior.EndAt != nil && now.After(*poll.Behavior.EndAt)
-
-	loginRequiredToVote := payload.Mode == "authenticated" || payload.Mode == "whitelist"
-
-	canVote := started && !ended && (!loginRequiredToVote || userID != "")
-
-	canViewResults := !poll.Vote.HideResults || ended || poll.Behavior.ShowLiveResults
+	viewer, _ := services.BuildViewerState(ctx, poll, userID, sessionID)
 
 	// -------------------- 7) response --------------------
 	c.JSON(http.StatusOK, gin.H{
@@ -180,11 +172,11 @@ func ViewSharedPoll(c *gin.Context) {
 		"viewer": gin.H{
 			"user_id":          userID,
 			"session_id":       sessionID,
-			"can_vote":         canVote,
-			"login_required":   loginRequiredToVote && userID == "",
-			"can_view_results": canViewResults,
-			"started":          started,
-			"ended":            ended,
+			"can_vote":         viewer.CanVote,
+			"can_view_results": viewer.CanViewResults,
+			"voted_option_id":  viewer.VotedOptionID,
+			"started":          viewer.Started,
+			"ended":            viewer.Ended,
 		},
 	})
-}
+	}

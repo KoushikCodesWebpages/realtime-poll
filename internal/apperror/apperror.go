@@ -1,0 +1,39 @@
+package apperror
+
+type AppError struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+	Action  string `json:"action,omitempty"`
+}
+
+func (e *AppError) Error() string {
+	return e.Code
+}
+
+
+const (
+
+	// ===== AUTH =====
+	AUTH_INVALID_CREDENTIALS = "AUTH_INVALID_CREDENTIALS"
+	AUTH_INVALID_TOKEN       = "AUTH_INVALID_TOKEN"
+	AUTH_EXPIRED_TOKEN       = "AUTH_EXPIRED_TOKEN"
+	AUTH_UNAUTHORIZED        = "AUTH_UNAUTHORIZED"
+
+	// ===== USER =====
+	USER_NOT_FOUND  = "USER_NOT_FOUND"
+	USER_EXISTS     = "USER_EXISTS"
+	USER_FORBIDDEN  = "USER_FORBIDDEN"
+
+	// ===== POLL =====
+	POLL_NOT_FOUND        = "POLL_NOT_FOUND"
+	POLL_ALREADY_VOTED    = "POLL_ALREADY_VOTED"
+	POLL_VOTING_STARTED   = "POLL_VOTING_STARTED"
+	POLL_EDIT_NOT_ALLOWED = "POLL_EDIT_NOT_ALLOWED"
+
+	// ===== VALIDATION =====
+	VALIDATION_FAILED = "VALIDATION_FAILED"
+
+	// ===== SYSTEM =====
+	INTERNAL_ERROR = "INTERNAL_ERROR"
+	DB_ERROR       = "DB_ERROR"
+)

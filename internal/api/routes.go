@@ -4,6 +4,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"realtime-poll/internal/middleware"
+	"realtime-poll/internal/apperror"
 	"realtime-poll/internal/services"
 	"realtime-poll/internal/utils"
 	"realtime-poll/internal/ws"
@@ -14,6 +15,10 @@ func RegisterRoutes(
 	voteService *services.VoteService,
 	hub *ws.Hub,
 ) {
+
+	r.GET("/test-error", func(c *gin.Context) {
+		middleware.Fail(c, apperror.Unauthorized())
+	})
 
 	// Root info
 	r.GET("/", func(c *gin.Context) {

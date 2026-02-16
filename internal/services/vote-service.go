@@ -11,7 +11,7 @@ import (
 	"realtime-poll/internal/models"
 	"realtime-poll/internal/repository"
 	"realtime-poll/internal/apperror"
-	"realtime-poll/internal/ws"
+	"realtime-poll/internal/dto"
 )
 func canUserVote(poll *models.Poll, userID string) error {
 
@@ -152,17 +152,17 @@ func (s *VoteService) CastVoteRealtime(
 }
 
 
-func (s *VoteService) GetResults(ctx context.Context, pollID string) ([]ws.OptionResult, error) {
+func (s *VoteService) GetResults(ctx context.Context, pollID string) ([]dto.OptionResult, error) {
 
 	poll, err := repository.GetPollByID(ctx, pollID)
 	if err != nil || poll == nil {
 		return nil, apperror.New(apperror.PollNotFound, "poll not found")
 	}
 
-	results := make([]ws.OptionResult, 0, len(poll.Content.Options))
+	results := make([]dto.OptionResult, 0, len(poll.Content.Options))
 
 	for _, opt := range poll.Content.Options {
-		results = append(results, ws.OptionResult{
+		results = append(results, dto.OptionResult{
 			OptionID: opt.OptionID,
 			Votes:    opt.Votes,
 		})
