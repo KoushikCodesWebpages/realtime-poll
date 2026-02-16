@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"context"
+	"time"
+
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 
@@ -55,36 +57,64 @@ func WsPoll(hub *ws.Hub, voteService *services.VoteService) gin.HandlerFunc {
 		// -------------------- READ LOOP --------------------
 		go client.ReadPump(func(userID, optionID, pollID string) {
 
-		// NEVER use gin request context after upgrade
-		ctx := context.Background()
+			ctx := context.Background()
 
-		err := voteService.CastVoteRealtime(
-			ctx,
-			pollID,
-			optionID,
-			userID,
-			sessionCookie,
-			ip,
-		)
-		if err != nil {
-			println("VOTE ERROR:", err.Error())
-			return
-		}
+			// load poll
+			poll, err := repository.GetPollByID(ctx, pollID)
+			if err != nil || poll == nil {
+				return
+			}
 
-		results, err := voteService.GetResults(ctx, pollID)
-		if err != nil {
-			println("RESULT ERROR:", err.Error())
-			return
-		}
+			// WS voting only allowed for realtime polls
+			if !poll.Behavior.ShowLiveResults {
+				return
+			}
 
-		payload := ws.VoteUpdate{
-			Type:    "vote_update",
-			PollID:  pollID,
-			Results: results,
-		}
+			// cast vote
+			err = voteService.CastVoteRealtime(
+				ctx,
+				pollID,
+				optionID,
+				userID,
+				sessionCookie,
+				ip,
+			)
+			if err != nil {
+				return
+			}
 
-		bytes, _ := json.Marshal(payload)
-		room.Broadcast(bytes)
-	})
+			now := time.Now()
+			pollEnded := poll.Behavior.EndAt != nil && now.After(*poll.Behavior.EndAt)
+
+			// ---------------- HIDDEN RESULTS ----------------
+			if poll.Vote.HideResults && !pollEnded {
+
+				ack := map[string]any{
+					"type": "vote_ack",
+				}
+
+				bytes, _ := json.Marshal(ack)
+
+				// send only to voter
+				client.Send(bytes)
+				return
+			}
+
+			// ---------------- SEND RESULTS ----------------
+			results, err := voteService.GetResults(ctx, pollID)
+			if err != nil {
+				return
+			}
+
+			payload := ws.VoteUpdate{
+				Type:    "vote_update",
+				PollID:  pollID,
+				Results: results,
+			}
+
+			bytes, _ := json.Marshal(payload)
+			room.Broadcast(bytes)
+		})
 	}
 }
+

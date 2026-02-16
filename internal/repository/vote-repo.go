@@ -97,3 +97,43 @@ func IncrementOptionVote(ctx context.Context, pollID, optionID string, delta int
 
 	return nil
 }
+
+
+
+func InsertVoteAtomic(ctx context.Context, vote models.VoteRecord) error {
+	_, err := db.DB.Collection("votes").InsertOne(ctx, vote)
+	return err
+}
+
+func IsDuplicateKey(err error) bool {
+	if err == nil {
+		return false
+	}
+	return mongo.IsDuplicateKeyError(err)
+}
+
+func UpdateVoteOption(ctx context.Context, voteID, optionID string) error {
+	_, err := db.DB.Collection("votes").UpdateOne(ctx,
+		bson.M{"vote_id": voteID},
+		bson.M{"$set": bson.M{
+			"option_id":  optionID,
+			"updated_at": time.Now(),
+		}},
+	)
+	return err
+}
+
+func GetVoteByIdentity(ctx context.Context, pollID, identity string) (*models.VoteRecord, error) {
+
+	var vote models.VoteRecord
+
+	err := db.DB.Collection("votes").FindOne(ctx, bson.M{
+		"poll_id":  pollID,
+		"identity": identity,
+	}).Decode(&vote)
+
+	if err != nil {
+		return nil, err
+	}
+	return &vote, nil
+}

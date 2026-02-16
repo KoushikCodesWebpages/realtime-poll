@@ -61,3 +61,10 @@ func (c *Client) WritePump() {
 		}
 	}
 }
+
+func (c *Client) Send(msg []byte) {
+	select {
+	case c.send <- msg:
+	default:
+	}
+}

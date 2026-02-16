@@ -1,5 +1,7 @@
 package ws
-
+import (
+	"encoding/json"
+)
 type Room struct {
 	pollID string
 
@@ -19,18 +21,19 @@ func NewRoom(pollID string) *Room {
 		clients:    make(map[*Client]bool),
 	}
 }
-
 func (r *Room) Run() {
 	for {
 		select {
 
 		case client := <-r.register:
 			r.clients[client] = true
+			r.broadcastPresence()
 
 		case client := <-r.unregister:
 			if _, ok := r.clients[client]; ok {
 				delete(r.clients, client)
 				close(client.send)
+				r.broadcastPresence()
 			}
 
 		case msg := <-r.broadcast:
@@ -45,6 +48,25 @@ func (r *Room) Run() {
 		}
 	}
 }
+func (r *Room) broadcastPresence() {
+
+	payload := map[string]any{
+		"type":    "presence",
+		"viewers": len(r.clients),
+	}
+
+	bytes, _ := json.Marshal(payload)
+
+	for client := range r.clients {
+		select {
+		case client.send <- bytes:
+		default:
+			delete(r.clients, client)
+			close(client.send)
+		}
+	}
+}
+
 
 func (r *Room) Broadcast(msg []byte) {
 	r.broadcast <- msg

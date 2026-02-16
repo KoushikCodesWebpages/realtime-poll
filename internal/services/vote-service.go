@@ -2,16 +2,49 @@ package services
 
 import (
 	"context"
-	"errors"
+	// "errors"
 	"time"
+
+
+	"github.com/google/uuid"
 
 	"realtime-poll/internal/models"
 	"realtime-poll/internal/repository"
+	"realtime-poll/internal/apperror"
 	"realtime-poll/internal/ws"
 )
+func canUserVote(poll *models.Poll, userID string) error {
+
+	switch poll.Access.Visibility {
+
+	case "authenticated":
+		if userID == "" {
+			return apperror.New(apperror.LoginRequired, "login required to vote")
+		}
+
+	case "whitelist":
+		if userID == "" {
+			return apperror.New(apperror.LoginRequired, "login required to vote")
+		}
+
+		allowed := false
+		for _, u := range poll.Access.AllowedUsers {
+			if u == userID {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			return apperror.New(apperror.NotWhitelisted, "not allowed to vote")
+		}
+	}
+
+	return nil
+}
+
+
 
 type VoteService struct{}
-
 
 func (s *VoteService) CastVote(
 	ctx context.Context,
@@ -22,57 +55,29 @@ func (s *VoteService) CastVote(
 	ip string,
 ) error {
 
-	// -------------------- load poll --------------------
 	poll, err := repository.GetPollByID(ctx, pollID)
 	if err != nil || poll == nil {
-		return errors.New("poll not found")
-	}
-
-	// -------------------- lifecycle --------------------
-	if poll.State.IsClosed {
-		return errors.New("poll closed")
+		return apperror.New(apperror.PollNotFound, "poll not found")
 	}
 
 	now := time.Now()
 
 	if poll.Behavior.StartAt != nil && now.Before(*poll.Behavior.StartAt) {
-		return errors.New("poll not started")
+		return apperror.New(apperror.PollNotStarted, "poll not started")
 	}
 
 	if poll.Behavior.EndAt != nil && now.After(*poll.Behavior.EndAt) {
-		return errors.New("poll ended")
+		return apperror.New(apperror.PollEnded, "poll ended")
 	}
 
-	// -------------------- access rules --------------------
-
-	if poll.Access.RequireLogin && userID == "" {
-		return errors.New("login required")
+	if poll.State.IsClosed {
+		return apperror.New(apperror.PollClosed, "poll closed")
 	}
 
-	for _, b := range poll.Access.BlockedUsers {
-		if b == userID {
-			return errors.New("blocked from voting")
-		}
+	if err := canUserVote(poll, userID); err != nil {
+		return err
 	}
 
-	if poll.Access.Visibility == "whitelist" {
-		allowed := false
-		for _, u := range poll.Access.AllowedUsers {
-			if u == userID {
-				allowed = true
-				break
-			}
-		}
-		if !allowed {
-			return errors.New("not allowed to vote")
-		}
-	}
-
-	if !poll.Vote.AnonymousVote && userID == "" {
-		return errors.New("anonymous voting disabled")
-	}
-
-	// -------------------- validate option --------------------
 	valid := false
 	for _, opt := range poll.Content.Options {
 		if opt.OptionID == optionID {
@@ -81,51 +86,43 @@ func (s *VoteService) CastVote(
 		}
 	}
 	if !valid {
-		return errors.New("invalid option")
+		return apperror.New(apperror.VoteInvalidOption, "invalid option")
 	}
 
-	// -------------------- vote tracking --------------------
-	existing, _ := repository.FindExistingVote(ctx, pollID, userID, sessionID)
-
-	count, _ := repository.CountVotesByUser(ctx, pollID, userID, sessionID, ip)
-
-	// ---------- vote limit ----------
-	if poll.Vote.MaxVotesPerUser > 0 && int(count) >= poll.Vote.MaxVotesPerUser && existing == nil {
-		return errors.New("vote limit reached")
+	identity := userID
+	if identity == "" {
+		identity = sessionID
 	}
 
-	// ---------- unique session ----------
-	if poll.Vote.UniqueSession && existing == nil && sessionID != "" && count > 0 {
-		return errors.New("already voted from this session")
+	vote := models.VoteRecord{
+		VoteID:    uuid.NewString(),
+		PollID:    pollID,
+		Identity:  identity,
+		UserID:    userID,
+		SessionID: sessionID,
+		IPAddress: ip,
+		OptionID:  optionID,
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
 
-	// ---------- unique ip ----------
-	if poll.Vote.UniqueIP && existing == nil && ip != "" && count > 0 {
-		return errors.New("already voted from this network")
-	}
+	err = repository.InsertVoteAtomic(ctx, vote)
 
-	// -------------------- first vote --------------------
-	if existing == nil {
-
-		vote := models.Vote{
-			PollID:    pollID,
-			OptionID:  optionID,
-			UserID:    userID,
-			SessionID: sessionID,
-			IP:        ip,
-			CreatedAt: time.Now(),
-		}
-
-		if err := repository.InsertVote(ctx, vote); err != nil {
-			return err
-		}
-
+	if err == nil {
 		return repository.IncrementOptionVote(ctx, pollID, optionID, 1)
 	}
 
-	// -------------------- change vote --------------------
+	if !repository.IsDuplicateKey(err) {
+		return err
+	}
+
 	if !poll.Vote.AllowChangeVote {
-		return errors.New("already voted")
+		return apperror.New(apperror.VoteAlreadyCast, "already voted")
+	}
+
+	existing, err := repository.GetVoteByIdentity(ctx, pollID, identity)
+	if err != nil || existing == nil {
+		return apperror.New(apperror.VoteNotAllowed, "vote not found")
 	}
 
 	if existing.OptionID == optionID {
@@ -140,7 +137,7 @@ func (s *VoteService) CastVote(
 		return err
 	}
 
-	return repository.UpdateVote(ctx, existing.ID, optionID)
+	return repository.UpdateVoteOption(ctx, existing.VoteID, optionID)
 }
 
 func (s *VoteService) CastVoteRealtime(
@@ -154,11 +151,12 @@ func (s *VoteService) CastVoteRealtime(
 	return s.CastVote(ctx, pollID, optionID, userID, sessionID, ip)
 }
 
+
 func (s *VoteService) GetResults(ctx context.Context, pollID string) ([]ws.OptionResult, error) {
 
 	poll, err := repository.GetPollByID(ctx, pollID)
 	if err != nil || poll == nil {
-		return nil, errors.New("poll not found")
+		return nil, apperror.New(apperror.PollNotFound, "poll not found")
 	}
 
 	results := make([]ws.OptionResult, 0, len(poll.Content.Options))
