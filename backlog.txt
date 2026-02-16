@@ -1,4 +1,7 @@
-4️⃣ Consistent Error Codes (HTTP + WS)
-5️⃣ Prevent Multiple WS Connections Same Session
-6️⃣ Snapshot Results Endpoint
-6️⃣ Snapshot Results Endpoint
+1️⃣ Add version field to Poll model
+2️⃣ Increment version on every vote
+3️⃣ Return version in vote service
+4️⃣ Include version in snapshot
+5️⃣ Include version in WS vote broadcast
+6️⃣ Include version in final results
+7️⃣ Include version in snapshot sent on join

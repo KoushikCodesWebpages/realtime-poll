@@ -48,7 +48,6 @@ func canUserVote(poll *models.Poll, userID string) error {
 }
 
 
-
 type VoteService struct{}
 
 func (s *VoteService) CastVote(
@@ -58,14 +57,14 @@ func (s *VoteService) CastVote(
 	userID string,
 	sessionID string,
 	ip string,
-) error {
+) (int64, error) {
 
 	poll, err := repository.GetPollByID(ctx, pollID)
 	if err != nil {
-		return apperror.Internal()
+		return 0, apperror.Internal()
 	}
 	if poll == nil {
-		return &apperror.AppError{
+		return 0, &apperror.AppError{
 			Code:    apperror.POLL_NOT_FOUND,
 			Message: "Poll not found",
 		}
@@ -75,21 +74,21 @@ func (s *VoteService) CastVote(
 
 	// ===== Time rules =====
 	if poll.Behavior.StartAt != nil && now.Before(*poll.Behavior.StartAt) {
-		return &apperror.AppError{
+		return 0, &apperror.AppError{
 			Code:    apperror.POLL_NOT_STARTED,
 			Message: "Voting has not started yet",
 		}
 	}
 
 	if poll.Behavior.EndAt != nil && now.After(*poll.Behavior.EndAt) {
-		return &apperror.AppError{
+		return 0, &apperror.AppError{
 			Code:    apperror.POLL_ENDED,
 			Message: "Voting has ended",
 		}
 	}
 
 	if poll.State.IsClosed {
-		return &apperror.AppError{
+		return 0, &apperror.AppError{
 			Code:    apperror.POLL_CLOSED,
 			Message: "Poll is closed",
 		}
@@ -97,7 +96,7 @@ func (s *VoteService) CastVote(
 
 	// ===== Permission rules =====
 	if err := canUserVote(poll, userID); err != nil {
-		return err
+		return 0, err
 	}
 
 	// ===== Validate option =====
@@ -109,7 +108,7 @@ func (s *VoteService) CastVote(
 		}
 	}
 	if !valid {
-		return &apperror.AppError{
+		return 0, &apperror.AppError{
 			Code:    apperror.VALIDATION_FAILED,
 			Message: "Invalid option",
 		}
@@ -135,21 +134,23 @@ func (s *VoteService) CastVote(
 	// ===== Try insert =====
 	err = repository.InsertVoteAtomic(ctx, vote)
 
+	// --- First vote ---
 	if err == nil {
-		if err := repository.IncrementOptionVote(ctx, pollID, optionID, 1); err != nil {
-			return apperror.Internal()
+		version, err := repository.IncrementOptionVote(ctx, pollID, optionID, 1)
+		if err != nil {
+			return 0, apperror.Internal()
 		}
-		return nil
+		return version, nil
 	}
 
 	// ===== Not duplicate => infra failure =====
 	if !repository.IsDuplicateKey(err) {
-		return apperror.Internal()
+		return 0, apperror.Internal()
 	}
 
 	// ===== Already voted =====
 	if !poll.Vote.AllowChangeVote {
-		return &apperror.AppError{
+		return 0, &apperror.AppError{
 			Code:    apperror.POLL_ALREADY_VOTED,
 			Message: "You already voted",
 		}
@@ -158,29 +159,33 @@ func (s *VoteService) CastVote(
 	// ===== Change vote =====
 	existing, err := repository.GetVoteByIdentity(ctx, pollID, identity)
 	if err != nil {
-		return apperror.Internal()
+		return 0, apperror.Internal()
 	}
 	if existing == nil {
-		return apperror.Internal()
+		return 0, apperror.Internal()
 	}
 
+	// same option = no-op (no new version)
 	if existing.OptionID == optionID {
-		return nil
+		return poll.State.Version, nil
 	}
 
-	if err := repository.IncrementOptionVote(ctx, pollID, existing.OptionID, -1); err != nil {
-		return apperror.Internal()
+	// decrement old
+	if _, err := repository.IncrementOptionVote(ctx, pollID, existing.OptionID, -1); err != nil {
+		return 0, apperror.Internal()
 	}
 
-	if err := repository.IncrementOptionVote(ctx, pollID, optionID, 1); err != nil {
-		return apperror.Internal()
+	// increment new → authoritative version
+	version, err := repository.IncrementOptionVote(ctx, pollID, optionID, 1)
+	if err != nil {
+		return 0, apperror.Internal()
 	}
 
 	if err := repository.UpdateVoteOption(ctx, existing.VoteID, optionID); err != nil {
-		return apperror.Internal()
+		return 0, apperror.Internal()
 	}
 
-	return nil
+	return version, nil
 }
 
 func (s *VoteService) CastVoteRealtime(
@@ -190,7 +195,7 @@ func (s *VoteService) CastVoteRealtime(
 	userID string,
 	sessionID string,
 	ip string,
-) error {
+) (int64, error){
 	return s.CastVote(ctx, pollID, optionID, userID, sessionID, ip)
 }
 

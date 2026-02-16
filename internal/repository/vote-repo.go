@@ -3,11 +3,12 @@ package repository
 import (
 	"context"
 	"time"
-	"errors"
+
 
 	"realtime-poll/internal/db"
 	"realtime-poll/internal/models"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
@@ -92,7 +93,7 @@ func CountVotesByUser(ctx context.Context, pollID, userID, sessionID, ip string)
 	return voteCollection().CountDocuments(ctx, filter)
 }
 
-func IncrementOptionVote(ctx context.Context, pollID, optionID string, delta int) error {
+func IncrementOptionVote(ctx context.Context, pollID, optionID string, delta int) (int64, error) {
 
 	filter := bson.M{
 		"poll_id": pollID,
@@ -102,20 +103,21 @@ func IncrementOptionVote(ctx context.Context, pollID, optionID string, delta int
 	update := bson.M{
 		"$inc": bson.M{
 			"content.options.$.votes": delta,
-			"meta.total_votes":        delta,
+			"state.version":           1, // ⭐ CRITICAL
 		},
 	}
 
-	res, err := getCollection().UpdateOne(ctx, filter, update)
+	opts := options.FindOneAndUpdate().
+		SetReturnDocument(options.After).
+		SetProjection(bson.M{"state.version": 1})
+
+	var updated models.Poll
+	err := getCollection().FindOneAndUpdate(ctx, filter, update, opts).Decode(&updated)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
-	if res.MatchedCount == 0 {
-		return errors.New("option not found")
-	}
-
-	return nil
+	return updated.State.Version, nil
 }
 
 

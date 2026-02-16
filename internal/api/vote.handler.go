@@ -44,7 +44,7 @@ func CastVote(c *gin.Context) {
 	voteService := services.VoteService{}
 
 	// -------------------- cast vote --------------------
-	err = voteService.CastVote(
+	_, err = voteService.CastVote(
 		ctx,
 		req.PollID,
 		req.OptionID,

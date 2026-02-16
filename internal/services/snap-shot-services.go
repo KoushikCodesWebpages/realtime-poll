@@ -18,6 +18,7 @@ type PollSnapshot struct {
 	PollID     string             `json:"poll_id"`
 	Options    []dto.OptionResult `json:"options"`
 	TotalVotes int                `json:"total_votes"`
+	Version    int64              `json:"version"`
 }
 
 func (s *SnapshotService) GetSnapshot(ctx context.Context, pollID string) (*PollSnapshot, error) {
@@ -45,5 +46,8 @@ func (s *SnapshotService) GetSnapshot(ctx context.Context, pollID string) (*Poll
 		PollID:     pollID,
 		Options:    results,
 		TotalVotes: total,
+		Version:    poll.State.Version,
 	}, nil
+
 }
+

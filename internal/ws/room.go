@@ -118,10 +118,12 @@ func (r *Room) startEndTimer() {
 		r.closePoll()
 	})
 }
+
 func (r *Room) BroadcastJSON(v any) {
 	bytes, _ := json.Marshal(v)
 	r.Broadcast(bytes)
 }
+
 
 func (r *Room) closePoll() {
 

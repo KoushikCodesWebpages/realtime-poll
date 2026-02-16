@@ -12,7 +12,6 @@ import (
 	"realtime-poll/internal/repository"
 	"realtime-poll/internal/services"
 	"realtime-poll/internal/ws"
-	"realtime-poll/internal/dto"
 	"realtime-poll/internal/apperror"
 )
 
@@ -83,51 +82,52 @@ func WsPoll(hub *ws.Hub, voteService *services.VoteService) gin.HandlerFunc {
 				sendReject(client, "NOT_REALTIME", "this poll does not support live voting")
 				return
 			}
-			// cast vote
-			err = voteService.CastVoteRealtime(
-				ctx,
-				pollID,
-				optionID,
-				userID,
-				sessionCookie,
-				ip,
-			)
+		// ---------- cast vote ----------
+		version, err := voteService.CastVoteRealtime(
+			ctx,
+			pollID,
+			optionID,
+			userID,
+			sessionCookie,
+			ip,
+		)
 
-			if err != nil {
-
-				// structured apperror
-				if appErr, ok := err.(*apperror.AppError); ok {
-					sendReject(client, string(appErr.Code), appErr.Message)
-				} else {
-					sendReject(client, "VOTE_FAILED", err.Error())
-				}
-				return
+		if err != nil {
+			if appErr, ok := err.(*apperror.AppError); ok {
+				sendReject(client, string(appErr.Code), appErr.Message)
+			} else {
+				sendReject(client, "VOTE_FAILED", "vote failed")
 			}
+			return
+		}
 
-			now := time.Now()
-			pollEnded := poll.Behavior.EndAt != nil && now.After(*poll.Behavior.EndAt)
+		now := time.Now()
+		pollEnded := poll.Behavior.EndAt != nil && now.After(*poll.Behavior.EndAt)
 
-			// hidden ballot
-			if poll.Vote.HideResults && !pollEnded {
-
-				client.SendJSON(map[string]any{
-					"type": "vote_ack",
-				})
-				return
-			}
-
-			// results
-			results, err := voteService.GetResults(ctx, pollID)
-			if err != nil {
-				sendReject(client, "RESULT_ERROR", "failed to fetch results")
-				return
-			}
-
-			room.BroadcastJSON(dto.VoteUpdate{
-				Type:    "vote_update",
-				PollID:  pollID,
-				Results: results,
+		// hidden ballot → only ack
+		if poll.Vote.HideResults && !pollEnded {
+			client.SendJSON(map[string]any{
+				"type":    "vote_ack",
+				"version": version,
 			})
+			return
+		}
+
+		// fetch updated results (after version increment)
+		results, err := voteService.GetResults(ctx, pollID)
+		if err != nil {
+			sendReject(client, "RESULT_ERROR", "failed to fetch results")
+			return
+		}
+
+		// ---------- BROADCAST ORDERED EVENT ----------
+		room.BroadcastJSON(map[string]any{
+			"type":    "vote_update",
+			"poll_id": pollID,
+			"version": version,
+			"results": results,
+		})
+
 		})
 	}
 }

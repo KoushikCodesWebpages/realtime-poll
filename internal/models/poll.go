@@ -88,7 +88,7 @@ type PollState struct {
 	IsClosed bool `bson:"is_closed" json:"is_closed"`
 	IsLocked bool `bson:"is_locked" json:"is_locked"`
 	IsDeleted bool `bson:"is_deleted" json:"is_deleted"` // NEW
-	Version  int  `bson:"version" json:"version"`
+	Version  int64  `bson:"version" json:"version"`
 }
 
 type Meta struct {
