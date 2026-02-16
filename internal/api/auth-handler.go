@@ -78,7 +78,7 @@ func Login(c *gin.Context) {
 		Name:     "session_id",
 		Value:    result.Session.SessionID,
 		Path:     "/",
-		Domain:   "realtime-poll.clqit.in", // add this
+		Domain:   ".realtime-poll.clqit.in", // add this
 		MaxAge:   maxAge,
 		HttpOnly: true,
 		Secure:   secure,
@@ -109,7 +109,7 @@ func Logout(c *gin.Context) {
 		Name:     "session_id",
 		Value:    "",
 		Path:     "/",
-		Domain:   "realtime-poll.clqit.in", // add this
+		Domain:   ".realtime-poll.clqit.in", // add this
 		MaxAge:   -1,
 		HttpOnly: true,
 		Secure:   secure,
