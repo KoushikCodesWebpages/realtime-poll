@@ -35,7 +35,7 @@ func main() {
 	}
 
 	r := gin.New()
-
+	r.SetTrustedProxies([]string{"127.0.0.1"})
 	r.Use(gin.Recovery())
 	r.Use(middleware.RequestLogger())
 
