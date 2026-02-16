@@ -51,7 +51,7 @@ func RegisterRoutes(
 			poll.PUT("/:poll_id", PutPoll)
 			poll.PATCH("/:poll_id", PatchPoll)
 			poll.DELETE("/:poll_id", DeletePoll)
-
+			poll.GET("/:poll_id/snapshot", GetPollSnapshot)
 			poll.POST("/:poll_id/share", GenerateShareLink)
 		}
 

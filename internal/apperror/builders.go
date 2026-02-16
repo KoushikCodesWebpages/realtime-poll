@@ -51,6 +51,14 @@ func PollNotStarted() *AppError {
 	}
 }
 
+
+func PollNotFound() *AppError {
+	return &AppError{
+		Code:    POLL_NOT_FOUND,
+		Message: "Voting has not started yet",
+	}
+}
+
 func PollEnded() *AppError {
 	return &AppError{
 		Code:    POLL_ENDED,

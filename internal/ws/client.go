@@ -8,11 +8,14 @@ import (
 )
 
 type Client struct {
-	conn   *websocket.Conn
-	room   *Room
-	send   chan []byte
-	userID string
+	conn *websocket.Conn
+	send chan []byte
+	room *Room
+
+	sessionID string
+	userID    string
 }
+
 
 func NewClient(conn *websocket.Conn, room *Room, userID string) *Client {
 	return &Client{
