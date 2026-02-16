@@ -39,9 +39,9 @@ func GenerateShareLink(c *gin.Context) {
 	}
 
 	c.JSON(200, gin.H{
-		"link": "/b1/poll/share?token=" + token,
+		"link": "/share?token=" + token,
 	})
-}
+	}
 
 func ViewSharedPoll(c *gin.Context) {
 
