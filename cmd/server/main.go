@@ -35,6 +35,8 @@ func main() {
 	}
 
 	r := gin.New()
+	r.RedirectTrailingSlash = false
+	r.RedirectFixedPath = false
 	r.SetTrustedProxies([]string{"127.0.0.1"})
 	r.Use(gin.Recovery())
 	r.Use(middleware.RequestLogger())
