@@ -3,7 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
-
+	"context"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 
@@ -36,7 +36,7 @@ func WsPoll(hub *ws.Hub, voteService *services.VoteService) gin.HandlerFunc {
 
 		userID := session.UserID
 		ip := c.ClientIP()
-		ctx := c.Request.Context()
+		
 
 		// -------------------- UPGRADE --------------------
 		conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
@@ -55,33 +55,36 @@ func WsPoll(hub *ws.Hub, voteService *services.VoteService) gin.HandlerFunc {
 		// -------------------- READ LOOP --------------------
 		go client.ReadPump(func(userID, optionID, pollID string) {
 
-			// vote using SAME business logic
-			err := voteService.CastVoteRealtime(
-				ctx,
-				pollID,
-				optionID,
-				userID,
-				sessionCookie,
-				ip,
-			)
-			if err != nil {
-				return
-			}
+		// NEVER use gin request context after upgrade
+		ctx := context.Background()
 
-			// get fresh results
-			results, err := voteService.GetResults(ctx, pollID)
-			if err != nil {
-				return
-			}
+		err := voteService.CastVoteRealtime(
+			ctx,
+			pollID,
+			optionID,
+			userID,
+			sessionCookie,
+			ip,
+		)
+		if err != nil {
+			println("VOTE ERROR:", err.Error())
+			return
+		}
 
-			payload := ws.VoteUpdate{
-				Type:    "vote_update",
-				PollID:  pollID,
-				Results: results,
-			}
+		results, err := voteService.GetResults(ctx, pollID)
+		if err != nil {
+			println("RESULT ERROR:", err.Error())
+			return
+		}
 
-			bytes, _ := json.Marshal(payload)
-			room.Broadcast(bytes)
-		})
+		payload := ws.VoteUpdate{
+			Type:    "vote_update",
+			PollID:  pollID,
+			Results: results,
+		}
+
+		bytes, _ := json.Marshal(payload)
+		room.Broadcast(bytes)
+	})
 	}
 }

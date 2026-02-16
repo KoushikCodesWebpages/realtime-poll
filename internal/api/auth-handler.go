@@ -71,19 +71,29 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	secure := true
 	maxAge := int(time.Until(result.Session.ExpiresAt).Seconds())
 
-	http.SetCookie(c.Writer, &http.Cookie{
+	isProd := os.Getenv("APP_ENV") == "prod"
+
+	cookie := &http.Cookie{
 		Name:     "session_id",
 		Value:    result.Session.SessionID,
 		Path:     "/",
-		Domain:   ".clqit.in", // add this
 		MaxAge:   maxAge,
 		HttpOnly: true,
-		Secure:   secure,
-		SameSite: http.SameSiteNoneMode,
-	})
+	}
+
+	if isProd {
+		cookie.Domain = ".clqit.in"
+		cookie.Secure = true
+		cookie.SameSite = http.SameSiteNoneMode
+	} else {
+		// localhost compatible
+		cookie.Secure = false
+		cookie.SameSite = http.SameSiteLaxMode
+	}
+
+	http.SetCookie(c.Writer, cookie)
 
 	c.JSON(200, gin.H{
 		"status": "logged_in",
@@ -96,26 +106,41 @@ func Login(c *gin.Context) {
 }
 
 
+
 func Logout(c *gin.Context) {
 
-	cookie, err := c.Cookie("session_id")
-	if err == nil {
-		repository.DeleteSession(cookie)
+	// ---------------- remove session from DB ----------------
+	cookieValue, err := c.Cookie("session_id")
+	if err == nil && cookieValue != "" {
+		repository.DeleteSession(cookieValue)
 	}
 
-	secure := os.Getenv("APP_ENV") == "prod"
+	// ---------------- build deletion cookie ----------------
+	isProd := os.Getenv("APP_ENV") == "prod"
 
-	http.SetCookie(c.Writer, &http.Cookie{
+	cookie := &http.Cookie{
 		Name:     "session_id",
 		Value:    "",
 		Path:     "/",
-		Domain:   ".clqit.in", // add this
-		MaxAge:   -1,
+		MaxAge:   -1, // delete cookie
 		HttpOnly: true,
-		Secure:   secure,
-		SameSite:  http.SameSiteNoneMode,
-	})
+	}
 
-	c.JSON(200, gin.H{"status": "logged_out"})
+	if isProd {
+		// production domain cookie
+		cookie.Domain = ".clqit.in"
+		cookie.Secure = true
+		cookie.SameSite = http.SameSiteNoneMode
+	} else {
+		// localhost cookie
+		cookie.Secure = false
+		cookie.SameSite = http.SameSiteLaxMode
+	}
+
+	http.SetCookie(c.Writer, cookie)
+
+	c.JSON(200, gin.H{
+		"status": "logged_out",
+	})
 }
 
