@@ -71,7 +71,7 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	secure := os.Getenv("APP_ENV") == "prod"
+	secure := true
 	maxAge := int(time.Until(result.Session.ExpiresAt).Seconds())
 
 	http.SetCookie(c.Writer, &http.Cookie{
