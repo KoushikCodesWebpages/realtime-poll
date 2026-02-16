@@ -3,6 +3,7 @@ package services
 import (
 	"errors"
 	"time"
+	"strings"
 
 	"github.com/google/uuid"
 	"realtime-poll/internal/models"
@@ -13,8 +14,11 @@ import (
 var ErrEmailExists = errors.New("email already exists")
 var ErrInvalidCredentials = errors.New("invalid credentials")
 var ErrUserExists = errors.New("username already exists")
+
 func Register(username, email, password string) error {
 
+	username = strings.ToLower(strings.TrimSpace(username))
+    email = strings.ToLower(strings.TrimSpace(email))
 	// username check
 	existingUser, err := repository.FindUserByUsername(username)
 	if err != nil {
@@ -56,6 +60,7 @@ type LoginResult struct {
 
 func Login(identifier, password string) (*LoginResult, error) {
 
+	identifier = strings.ToLower(strings.TrimSpace(identifier))
 	user, err := repository.FindUserByIdentifier(identifier)
 	if err != nil || user == nil {
 		println("LOGIN FAIL: user not found for", identifier)
