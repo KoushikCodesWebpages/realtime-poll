@@ -20,7 +20,9 @@ Create a question and options.
 - Python
 ```
 
-📷 `docs/create.png`
+<p align="center">
+  <img src="https://raw.githubusercontent.com/KoushikCodesWebpages/realtime-poll/dev/docs/create.png" width="850">
+</p>
 
 ---
 
@@ -32,7 +34,9 @@ Send the generated link anywhere.
 https://live-poll.clqit.in/share?token=ABC123
 ```
 
-📷 `docs/share.png`
+<p align="center">
+  <img src="https://raw.githubusercontent.com/KoushikCodesWebpages/realtime-poll/dev/docs/share.png" width="850">
+</p>
 
 Messaging apps automatically show a preview card.
 
@@ -42,7 +46,9 @@ Messaging apps automatically show a preview card.
 
 Users open the link and vote instantly.
 
-📷 `docs/vote.png`
+<p align="center">
+  <img src="https://raw.githubusercontent.com/KoushikCodesWebpages/realtime-poll/dev/docs/vote.png" width="850">
+</p>
 
 No refresh required.
 No login required (optional restriction supported).
