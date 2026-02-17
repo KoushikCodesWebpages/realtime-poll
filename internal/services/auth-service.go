@@ -94,7 +94,7 @@ func Login(identifier, password string) (*LoginResult, error) {
 	if err != nil {
 		return nil, apperror.Internal()
 	}
-
+ 
 	return &LoginResult{
 		Session: session,
 		User:    user,
