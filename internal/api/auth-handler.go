@@ -96,7 +96,7 @@ func Login(c *gin.Context) {
 
 	isProd := os.Getenv("APP_ENV") == "prod"
 	maxAge = int(time.Until(result.Session.ExpiresAt).Seconds())
-	expires := time.Now().Add(time.Duration(maxAge) * time.Second)
+	expires := time.Now().UTC().Add(time.Duration(maxAge) * time.Second)
 
 
 	cookie := &http.Cookie{
