@@ -1,60 +1,47 @@
 package ws
-import(
-	"encoding/json"
+
+import (
+	"sync"
 )
+
 type Room struct {
-	pollID string
-
-	clients map[*Client]bool
-
-	Join      chan *Client
-	Leave     chan *Client
-	Broadcast chan []byte
+	PollID    string
+	clients   map[*Connection]struct{}
+	join      chan *Connection
+	leave     chan *Connection
+	broadcast chan internalEvent
+	closed    bool
+	mu        sync.RWMutex
 }
 
-func NewRoom(pollID string) *Room {
+func newRoom(pollID string) *Room {
 	r := &Room{
-		pollID:    pollID,
-		clients:   make(map[*Client]bool),
-		Join:      make(chan *Client),
-		Leave:     make(chan *Client),
-		Broadcast: make(chan []byte, 256),
+		PollID:    pollID,
+		clients:   make(map[*Connection]struct{}),
+		join:      make(chan *Connection),
+		leave:     make(chan *Connection),
+		broadcast: make(chan internalEvent, 32),
 	}
 
-	go r.Run()
+	go r.run()
+	go startExpiryTimer(r)
+
 	return r
 }
 
-func (r *Room) Run() {
+func (r *Room) run() {
 	for {
 		select {
 
-		case client := <-r.Join:
-			r.clients[client] = true
+		case c := <-r.join:
+			r.clients[c] = struct{}{}
 
-		case client := <-r.Leave:
-			if _, ok := r.clients[client]; ok {
-				delete(r.clients, client)
-				client.Close()
-			}
+		case c := <-r.leave:
+			delete(r.clients, c)
+			c.close()
 
-			// auto cleanup empty room
-			if len(r.clients) == 0 {
-				go GlobalHub.RemoveRoom(r.pollID)
-				return
-			}
-
-
-		case msg := <-r.Broadcast:
-			for client := range r.clients {
-				client.Send(msg)
-			}
+		case ev := <-r.broadcast:
+			r.emit(ev)
 		}
 	}
-}
-
-
-func (r *Room) BroadcastJSON(v any) {
-	b, _ := json.Marshal(v)
-	r.Broadcast <- b
 }

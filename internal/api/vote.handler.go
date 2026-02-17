@@ -9,7 +9,6 @@ import (
 	"realtime-poll/internal/constants"
 	"realtime-poll/internal/middleware"
 	"realtime-poll/internal/services"
-	"realtime-poll/internal/ws"
 )
 
 /* ---------------- Request ---------------- */
@@ -21,7 +20,7 @@ type VoteReq struct {
 
 /* ---------------- Handler ---------------- */
 
-func CastVote(c *gin.Context) {
+func CastVoteHandler(c *gin.Context) {
 
 	var req VoteReq
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -31,15 +30,11 @@ func CastVote(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
-	/* -------- identity -------- */
-
 	userID := c.GetString(constants.CtxUserID)
 	sessionID, _ := c.Cookie("session_id")
 	ip := c.ClientIP()
 
 	voteService := services.VoteService{}
-
-	/* -------- 1️⃣ Save vote -------- */
 
 	result, err := voteService.CastVote(
 		ctx,
@@ -53,24 +48,6 @@ func CastVote(c *gin.Context) {
 		middleware.Fail(c, err)
 		return
 	}
-
-	/* -------- 2️⃣ Fetch updated results -------- */
-
-	pollResults, err := voteService.GetResults(ctx, req.PollID)
-	if err == nil {
-
-		// IMPORTANT: publish into the SAME WS room
-		room := ws.GlobalHub.GetRoom(req.PollID)
-
-		room.BroadcastJSON(map[string]any{
-			"type":    "vote_update",
-			"poll_id": req.PollID,
-			"version": result.Version,
-			"results": pollResults,
-		})
-	}
-
-	/* -------- 3️⃣ HTTP response -------- */
 
 	c.JSON(http.StatusOK, gin.H{
 		"status": "ok",

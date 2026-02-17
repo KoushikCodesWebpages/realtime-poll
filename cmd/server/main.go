@@ -14,10 +14,10 @@ import (
 	"realtime-poll/internal/api"
 	"realtime-poll/internal/db"
 	"realtime-poll/internal/middleware"
+	"realtime-poll/internal/ws"
+"realtime-poll/internal/services"
 	
 
-	"realtime-poll/internal/services"
-	"realtime-poll/internal/ws"
 
 )
 
@@ -31,6 +31,8 @@ func main() {
 
 	// DB connect
 	db.Connect()
+		// connect realtime lifecycle hook
+	ws.OnPollExpired = services.HandlePollExpired
 
 	debug := os.Getenv("DEBUG") == "true"
 
@@ -80,13 +82,11 @@ func main() {
 		AllowCredentials: true,
 		MaxAge: 12 * time.Hour,
 	}))
-	// ---- create shared dependencies ----
-	voteService := &services.VoteService{}
-	hub := ws.NewHub()
+
 
 	// Routes
 		// ---- register routes ----
-	api.RegisterRoutes(r, voteService, hub)
+	api.RegisterRoutes(r)
 
 	port := os.Getenv("PORT")
 	if port == "" {

@@ -12,6 +12,7 @@ import (
 	"realtime-poll/internal/repository"
 	"realtime-poll/internal/apperror"
 	"realtime-poll/internal/dto"
+	"realtime-poll/internal/ws"
 )
 
 func canUserVote(poll *models.Poll, userID string) error {
@@ -141,6 +142,8 @@ func (s *VoteService) CastVote(
 		if err != nil {
 			return nil, apperror.Internal()
 		}
+		// realtime broadcast
+		ws.EmitVote(pollID, optionID, +1)
 
 		return &VoteResult{
 			Version:        version,
@@ -201,6 +204,10 @@ func (s *VoteService) CastVote(
 	if err := repository.UpdateVoteOption(ctx, existing.VoteID, optionID); err != nil {
 		return nil, apperror.Internal()
 	}
+
+	// realtime broadcasts
+	ws.EmitVote(pollID, existing.OptionID, -1)
+	ws.EmitVote(pollID, optionID, +1)
 
 	return &VoteResult{
 		Version:        version,

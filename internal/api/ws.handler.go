@@ -2,234 +2,242 @@ package api
 
 import (
 	// "encoding/json"
+	
+	// "context"
+	// "log"
+	// "time"
+	// "realtime-poll/internal/repository"
+	// "realtime-poll/internal/services"
+	
+	// "realtime-poll/internal/utils"
+	// "realtime-poll/internal/apperror"
 	"net/http"
-	"context"
-	"log"
-	"time"
-
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
-
-	"realtime-poll/internal/repository"
-	"realtime-poll/internal/services"
 	"realtime-poll/internal/ws"
-	"realtime-poll/internal/utils"
-	"realtime-poll/internal/apperror"
 )
+
+
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
 }
-func handleRealtimeVote(
-	ctx context.Context,
-	room *ws.Room,
-	pollID string,
-	userID string,
-	optionID string,
-) {
-	voteService := services.VoteService{}
 
-	version, err := voteService.CastVoteRealtime(
-		ctx,
-		pollID,
-		optionID,
-		userID,
-		"", // session handled in HTTP only
-		"",
-	)
 
-	if err != nil {
-		room.BroadcastJSON(gin.H{
-			"type": "vote_rejected",
-			"code": err.(*apperror.AppError).Code,
-			"message": err.(*apperror.AppError).Message,
-		})
-		return
-	}
-
-	// fetch updated counts
-	results, _ := voteService.GetResults(ctx, pollID)
-
-	for _, r := range results {
-		room.BroadcastJSON(gin.H{
-			"type":       "vote_update",
-			"option_id":  r.OptionID,
-			"votes":      r.Votes,
-			"total_votes": version,
-		})
-	}
+func ServePollWS(c *gin.Context) {
+	ws.ServeWS(c)
 }
 
-func WsPoll(hub *ws.Hub, voteService *services.VoteService) gin.HandlerFunc {
+// func handleRealtimeVote(
+// 	ctx context.Context,
+// 	room *ws.Room,
+// 	pollID string,
+// 	userID string,
+// 	optionID string,
+// ) {
+// 	voteService := services.VoteService{}
 
-	return func(c *gin.Context) {
+// 	version, err := voteService.CastVoteRealtime(
+// 		ctx,
+// 		pollID,
+// 		optionID,
+// 		userID,
+// 		"", // session handled in HTTP only
+// 		"",
+// 	)
 
-		pollID := c.Param("pollId")
+// 	if err != nil {
+// 		room.BroadcastJSON(gin.H{
+// 			"type": "vote_rejected",
+// 			"code": err.(*apperror.AppError).Code,
+// 			"message": err.(*apperror.AppError).Message,
+// 		})
+// 		return
+// 	}
 
-		/* ---------------- AUTH TOKEN ---------------- */
+// 	// fetch updated counts
+// 	results, _ := voteService.GetResults(ctx, pollID)
 
-		token := c.Query("token")
-		if token == "" {
-			c.AbortWithStatusJSON(401, gin.H{"error": "missing ws token"})
-			return
-		}
+// 	for _, r := range results {
+// 		room.BroadcastJSON(gin.H{
+// 			"type":       "vote_update",
+// 			"option_id":  r.OptionID,
+// 			"votes":      r.Votes,
+// 			"total_votes": version,
+// 		})
+// 	}
+// }
 
-		userID, err := utils.ParseWSToken(token)
-		if err != nil {
-			log.Println("WS TOKEN ERROR:", err)
-			c.AbortWithStatusJSON(401, gin.H{"error": "invalid ws token"})
-			return
-		}
+// func WsPoll(hub *ws.Hub, voteService *services.VoteService) gin.HandlerFunc {
 
-		sessionID := "ws:" + userID
-		ip := c.ClientIP()
+// 	return func(c *gin.Context) {
 
-		/* ---------------- UPGRADE ---------------- */
+// 		pollID := c.Param("pollId")
 
-		conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
-		if err != nil {
-			return
-		}
+// 		/* ---------------- AUTH TOKEN ---------------- */
 
-		/* ---------------- CLIENT + ROOM ---------------- */
+// 		token := c.Query("token")
+// 		if token == "" {
+// 			c.AbortWithStatusJSON(401, gin.H{"error": "missing ws token"})
+// 			return
+// 		}
 
-		room := hub.GetRoom(pollID)
-		client := ws.NewClient(conn, room, userID)
+// 		userID, err := utils.ParseWSToken(token)
+// 		if err != nil {
+// 			log.Println("WS TOKEN ERROR:", err)
+// 			c.AbortWithStatusJSON(401, gin.H{"error": "invalid ws token"})
+// 			return
+// 		}
 
-		room.Join <- client
+// 		sessionID := "ws:" + userID
+// 		ip := c.ClientIP()
 
-		/* ---------------- START PUMPS ---------------- */
+// 		/* ---------------- UPGRADE ---------------- */
 
-		go client.WritePump()
+// 		conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+// 		if err != nil {
+// 			return
+// 		}
 
-		go client.ReadPump(func(userID, optionID, pollID string) {
+// 		/* ---------------- CLIENT + ROOM ---------------- */
 
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
+// 		room := hub.GetRoom(pollID)
+// 		client := ws.NewClient(conn, room, userID)
 
-			/* -------- load poll -------- */
+// 		room.Join <- client
 
-			poll, err := repository.GetPollByID(ctx, pollID)
-			if err != nil || poll == nil {
-				sendReject(client, "POLL_NOT_FOUND", "poll not found")
-				return
-			}
+// 		/* ---------------- START PUMPS ---------------- */
 
-			/* -------- lifecycle -------- */
+// 		go client.WritePump()
 
-			if poll.State.IsClosed ||
-				(poll.Behavior.EndAt != nil && time.Now().After(*poll.Behavior.EndAt)) {
+// 		go client.ReadPump(func(userID, optionID, pollID string) {
 
-				sendReject(client, "POLL_ENDED", "poll has ended")
-				return
-			}
+// 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+// 			defer cancel()
 
-			/* -------- realtime capability -------- */
+// 			/* -------- load poll -------- */
 
-			if !poll.Behavior.ShowLiveResults {
-				sendReject(client, "NOT_REALTIME", "this poll does not support live voting")
-				return
-			}
+// 			poll, err := repository.GetPollByID(ctx, pollID)
+// 			if err != nil || poll == nil {
+// 				sendReject(client, "POLL_NOT_FOUND", "poll not found")
+// 				return
+// 			}
 
-			/* -------- CAST VOTE -------- */
+// 			/* -------- lifecycle -------- */
 
-			version, err := voteService.CastVoteRealtime(
-				ctx,
-				pollID,
-				optionID,
-				userID,
-				sessionID,
-				ip,
-			)
+// 			if poll.State.IsClosed ||
+// 				(poll.Behavior.EndAt != nil && time.Now().After(*poll.Behavior.EndAt)) {
 
-			if err != nil {
-				if appErr, ok := err.(*apperror.AppError); ok {
-					sendReject(client, string(appErr.Code), appErr.Message)
-				} else {
-					sendReject(client, "VOTE_FAILED", "vote failed")
-				}
-				return
-			}
+// 				sendReject(client, "POLL_ENDED", "poll has ended")
+// 				return
+// 			}
 
-			now := time.Now()
-			pollEnded := poll.Behavior.EndAt != nil && now.After(*poll.Behavior.EndAt)
+// 			/* -------- realtime capability -------- */
 
-			/* -------- hidden ballot -------- */
+// 			if !poll.Behavior.ShowLiveResults {
+// 				sendReject(client, "NOT_REALTIME", "this poll does not support live voting")
+// 				return
+// 			}
 
-			if poll.Vote.HideResults && !pollEnded {
-				client.SendJSON(map[string]any{
-					"type":    "vote_ack",
-					"version": version,
-				})
-				return
-			}
+// 			/* -------- CAST VOTE -------- */
 
-			/* -------- FETCH RESULTS -------- */
+// 			version, err := voteService.CastVoteRealtime(
+// 				ctx,
+// 				pollID,
+// 				optionID,
+// 				userID,
+// 				sessionID,
+// 				ip,
+// 			)
 
-			results, err := voteService.GetResults(ctx, pollID)
-			if err != nil {
-				sendReject(client, "RESULT_ERROR", "failed to fetch results")
-				return
-			}
+// 			if err != nil {
+// 				if appErr, ok := err.(*apperror.AppError); ok {
+// 					sendReject(client, string(appErr.Code), appErr.Message)
+// 				} else {
+// 					sendReject(client, "VOTE_FAILED", "vote failed")
+// 				}
+// 				return
+// 			}
 
-			/* -------- BROADCAST -------- */
+// 			now := time.Now()
+// 			pollEnded := poll.Behavior.EndAt != nil && now.After(*poll.Behavior.EndAt)
 
-			room.BroadcastJSON(map[string]any{
-				"type":    "vote_update",
-				"poll_id": pollID,
-				"version": version,
-				"results": results,
-			})
-		})
+// 			/* -------- hidden ballot -------- */
 
-		/* ---------------- INITIAL STATE ---------------- */
+// 			if poll.Vote.HideResults && !pollEnded {
+// 				client.SendJSON(map[string]any{
+// 					"type":    "vote_ack",
+// 					"version": version,
+// 				})
+// 				return
+// 			}
 
-		go sendInitialState(client, voteService, pollID, userID, sessionID)
-	}
-}
+// 			/* -------- FETCH RESULTS -------- */
 
-func sendReject(client *ws.Client, code string, message string) {
-	payload := map[string]any{
-		"type":    "vote_rejected",
-		"code":    code,
-		"message": message,
-	}
-	client.SendJSON(payload)
-}
+// 			results, err := voteService.GetResults(ctx, pollID)
+// 			if err != nil {
+// 				sendReject(client, "RESULT_ERROR", "failed to fetch results")
+// 				return
+// 			}
+
+// 			/* -------- BROADCAST -------- */
+
+// 			room.BroadcastJSON(map[string]any{
+// 				"type":    "vote_update",
+// 				"poll_id": pollID,
+// 				"version": version,
+// 				"results": results,
+// 			})
+// 		})
+
+// 		/* ---------------- INITIAL STATE ---------------- */
+
+// 		go sendInitialState(client, voteService, pollID, userID, sessionID)
+// 	}
+// }
+
+// func sendReject(client *ws.Client, code string, message string) {
+// 	payload := map[string]any{
+// 		"type":    "vote_rejected",
+// 		"code":    code,
+// 		"message": message,
+// 	}
+// 	client.SendJSON(payload)
+// }
 
 
-func sendInitialState(client *ws.Client, voteService *services.VoteService, pollID, userID, sessionID string) {
+// func sendInitialState(client *ws.Client, voteService *services.VoteService, pollID, userID, sessionID string) {
 
-	ctx := context.Background()
+// 	ctx := context.Background()
 
-	poll, err := repository.GetPollByID(ctx, pollID)
-	if err != nil || poll == nil {
-		return
-	}
+// 	poll, err := repository.GetPollByID(ctx, pollID)
+// 	if err != nil || poll == nil {
+// 		return
+// 	}
 
-	// lifecycle
-	now := time.Now()
-	started := poll.Behavior.StartAt == nil || now.After(*poll.Behavior.StartAt)
-	ended := poll.Behavior.EndAt != nil && now.After(*poll.Behavior.EndAt)
+// 	// lifecycle
+// 	now := time.Now()
+// 	started := poll.Behavior.StartAt == nil || now.After(*poll.Behavior.StartAt)
+// 	ended := poll.Behavior.EndAt != nil && now.After(*poll.Behavior.EndAt)
 
-	// viewer vote
-	vote, _ := repository.GetVoteForViewer(ctx, pollID, userID, sessionID)
+// 	// viewer vote
+// 	vote, _ := repository.GetVoteForViewer(ctx, pollID, userID, sessionID)
 
-	var myVote any = nil
-	if vote != nil {
-		myVote = vote.OptionID
-	}
+// 	var myVote any = nil
+// 	if vote != nil {
+// 		myVote = vote.OptionID
+// 	}
 
-	// results
-	results, _ := voteService.GetResults(ctx, pollID)
+// 	// results
+// 	results, _ := voteService.GetResults(ctx, pollID)
 
-	payload := map[string]any{
-		"type":    "init_state",
-		"my_vote": myVote,
-		"results": results,
-		"started": started,
-		"ended":   ended,
-	}
+// 	payload := map[string]any{
+// 		"type":    "init_state",
+// 		"my_vote": myVote,
+// 		"results": results,
+// 		"started": started,
+// 		"ended":   ended,
+// 	}
 
-	client.SendJSON(payload)
-}
+// 	client.SendJSON(payload)
+// }

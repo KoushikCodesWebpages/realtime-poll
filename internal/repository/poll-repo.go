@@ -13,6 +13,10 @@ import (
 	"realtime-poll/internal/dto"
 )
 
+func getCollection() *mongo.Collection {
+	return db.DB.Collection("polls")
+}
+
 func GetPollByIDRaw(ctx context.Context, pollID string) (*models.Poll, error) {
 
 	var poll models.Poll
@@ -121,9 +125,7 @@ func IsExpired(p models.Poll) bool {
 	return time.Now().After(*p.Behavior.EndAt)
 }
 
-func getCollection() *mongo.Collection {
-	return db.DB.Collection("polls")
-}
+
 
 func CreatePoll(ctx context.Context, poll *models.Poll) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -288,10 +290,18 @@ func IncrementVote(pollID, optionID string) error {
 	return err
 }
 
+
 func ClosePoll(ctx context.Context, pollID string) error {
-	_, err := db.DB.Collection("polls").UpdateOne(ctx,
+
+	_, err := getCollection().UpdateOne(
+		ctx,
 		bson.M{"poll_id": pollID},
-		bson.M{"$set": bson.M{"state.is_closed": true}},
+		bson.M{
+			"$set": bson.M{
+				"state.is_closed": true,
+			},
+		},
 	)
+
 	return err
 }
