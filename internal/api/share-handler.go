@@ -69,17 +69,59 @@ func ViewSharedPoll(c *gin.Context) {
 		return
 	}
 
-	// IMPORTANT: sync cookie with server session
+	isProd := gin.Mode() == gin.ReleaseMode
+
+	// --------------------------------------------------
+	// ACCESS BLOCK → CLEAR SESSION COOKIE
+	// --------------------------------------------------
+	if result.Access == "not_whitelisted" || result.Access == "whitelist_required" {
+
+		cookie := &http.Cookie{
+			Name:     "session_id",
+			Value:    "",
+			Path:     "/",
+			MaxAge:   -1, // delete cookie
+			HttpOnly: true,
+		}
+
+		if isProd {
+			cookie.Domain = ".clqit.in"
+			cookie.Secure = true
+			cookie.SameSite = http.SameSiteNoneMode
+		} else {
+			cookie.Secure = false
+			cookie.SameSite = http.SameSiteLaxMode
+		}
+
+		http.SetCookie(c.Writer, cookie)
+
+		c.JSON(http.StatusOK, result)
+		return
+	}
+
+	// --------------------------------------------------
+	// NORMAL FLOW → SYNC SESSION COOKIE
+	// --------------------------------------------------
 	if result.SessionID != "" && result.SessionID != incomingSessionID {
-		http.SetCookie(c.Writer, &http.Cookie{
+
+		cookie := &http.Cookie{
 			Name:     "session_id",
 			Value:    result.SessionID,
 			Path:     "/",
 			HttpOnly: true,
-			SameSite:  http.SameSiteNoneMode,
-			Secure:   false, // true in production HTTPS
 			MaxAge:   int((30 * 24 * time.Hour).Seconds()),
-		})
+		}
+
+		if isProd {
+			cookie.Domain = ".clqit.in"
+			cookie.Secure = true
+			cookie.SameSite = http.SameSiteNoneMode
+		} else {
+			cookie.Secure = false
+			cookie.SameSite = http.SameSiteLaxMode
+		}
+
+		http.SetCookie(c.Writer, cookie)
 	}
 
 	c.JSON(http.StatusOK, result)
