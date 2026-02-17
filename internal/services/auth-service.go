@@ -4,6 +4,7 @@ import (
 
 	"time"
 	"strings"
+	"log"
 
 	"github.com/google/uuid"
 	"realtime-poll/internal/models"
@@ -106,14 +107,15 @@ const SessionDuration = 7 * 24 * time.Hour // 7 days
 func CreateSession(userID string) (*models.Session, error) {
 
 	now := time.Now().UTC()
-
+	
 	session := &models.Session{
 		SessionID: uuid.NewString(),
 		UserID:    userID,
 		CreatedAt: now,
 		ExpiresAt: now.Add(SessionDuration),
 	}
-
+	log.Println("NOW:", time.Now().UTC())
+	log.Println("EXPIRES:", session.ExpiresAt.UTC())
 	if err := repository.InsertSession(session); err != nil {
 		return nil, apperror.Internal()
 	}

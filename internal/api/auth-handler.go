@@ -51,7 +51,7 @@ func Session(c *gin.Context) {
 		c.JSON(200, gin.H{"user": nil})
 		return
 	}
-
+	
 	c.JSON(200, gin.H{
 		"user": gin.H{
 			"id":       user.AuthUserID,
