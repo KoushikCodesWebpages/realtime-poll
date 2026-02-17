@@ -7,13 +7,22 @@ import (
 
 	"context"
 
-
+	"strings"
 	"realtime-poll/internal/apperror"
 	"realtime-poll/internal/repository"
 	"realtime-poll/internal/utils"
 	"realtime-poll/internal/models"
 	"realtime-poll/internal/dto"
 )
+
+type SharedPollResult struct {
+	Poll      *models.Poll `json:"poll"`
+	UserID    string       `json:"user_id"`
+	SessionID string       `json:"session_id"`
+	Viewer    dto.SharedViewer `json:"viewer"`
+	Access string `json:"access"` // new
+	Message string `json:"message,omitempty"` 
+}
 
 
 type ShareService struct{}
@@ -63,13 +72,6 @@ func (s *ShareService) GenerateShareLink(
 	return token, poll.Access.Visibility, nil
 }
 
-type SharedPollResult struct {
-	Poll      *models.Poll `json:"poll"`
-	UserID    string       `json:"user_id"`
-	SessionID string       `json:"session_id"`
-	Viewer    dto.SharedViewer `json:"viewer"`
-}
-
 
 func (s *ShareService) ViewSharedPoll(
 	ctx context.Context,
@@ -107,12 +109,57 @@ func (s *ShareService) ViewSharedPoll(
 		}
 	}
 
-	// -------- whitelist rule --------
-	if claims.Mode == "whitelist" && userID == "" {
-		return nil, apperror.Unauthorized()
+	// ============================================================
+	// ACCESS CONTROL (CRITICAL SECURITY SECTION)
+	// ============================================================
+
+	// ---- login required ----
+	if poll.Access.RequireLogin && userID == "" {
+		return &SharedPollResult{Access: "login_required"}, nil
 	}
 
-	// -------- ensure session --------
+	// ---- whitelist enforcement ----
+	if poll.Access.Visibility == "whitelisted" {
+
+		if userID == "" {
+			return &SharedPollResult{
+				Access:  "login_required",
+				Message: "Please login to view this poll",
+			}, nil
+		}
+
+		user, err := repository.FindUserByID(userID)
+		if err != nil {
+			return nil, apperror.Internal()
+		}
+		if user == nil {
+			return &SharedPollResult{
+				Access:  "whitelist_required",
+				Message: "You are not allowed to access this poll",
+			}, nil
+		}
+
+		allowed := false
+		for _, email := range poll.Access.AllowedEmails {
+			if strings.EqualFold(strings.TrimSpace(email), strings.TrimSpace(user.Email)) {
+				allowed = true
+				break
+			}
+		}
+
+		if !allowed {
+			return &SharedPollResult{
+				Access:  "not_whitelisted",
+				Message: "You are not whitelisted. Voting not allowed.",
+			}, nil
+		}
+	}
+
+
+	// ============================================================
+	// SESSION CREATION (ONLY AFTER ACCESS APPROVED)
+	// ============================================================
+
 	if sessionID == "" {
 		anon, err := repository.CreateAnonymousSession(ctx, ip)
 		if err != nil {
@@ -135,7 +182,7 @@ func (s *ShareService) ViewSharedPoll(
 		UserID:    userID,
 		SessionID: sessionID,
 	}
-	
+
 	result.Viewer = struct {
 		AlreadyVoted   bool   `json:"already_voted"`
 		CanVote        bool   `json:"can_vote"`
@@ -153,7 +200,6 @@ func (s *ShareService) ViewSharedPoll(
 		viewer.Started,
 		viewer.Ended,
 	}
-
 
 	return result, nil
 }

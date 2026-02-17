@@ -74,7 +74,7 @@ type CreatePollReq struct {
 	RandomizeOptions  bool    `json:"randomize_options"`
 
 	// ================= ACCESS =================
-	Visibility    string   `json:"visibility" binding:"oneof=public authenticated whitelist link"`
+	Visibility    string   `json:"visibility" binding:"oneof=public authenticated whitelisted link"`
 	AllowedEmails []string `json:"allowed_emails,omitempty"`
 
 	// ================= VOTING =================

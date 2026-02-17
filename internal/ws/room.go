@@ -3,6 +3,8 @@ package ws
 import (
 	"sync"
 	"time"
+	"context"
+	"realtime-poll/internal/repository"
 )
 
 type Room struct {
@@ -51,33 +53,38 @@ func (r *Room) run() {
 	for {
 		select {
 
-		// ---------- JOIN ----------
-		case c := <-r.join:
+	case c := <-r.join:
 
-			key := c.sess.IdentityKey()
+		key := c.sess.IdentityKey()
 
-			// kick previous device/tab
-			if old, exists := r.clients[key]; exists {
-				old.close()
-				delete(r.clients, key)
-			}
+		if old, exists := r.clients[key]; exists {
+			old.close()
+			delete(r.clients, key)
+		}
 
-			r.clients[key] = c
+		// 🔴 LOAD POLL
+		poll, _ := repository.GetPollByID(context.Background(), r.PollID)
 
-			// send snapshot
-			if BuildPollSnapshot != nil {
-				data, err := BuildPollSnapshot(c.sess)
-				if err == nil {
-					r.hydrateVotes(data)
+		// 🔴 DETERMINE PERMISSIONS
+		assignRole(c.sess, poll.OwnerID)
+		assignVisibility(c.sess, poll)
 
-					c.send <- Envelope{
-						Type: EventPollState,
-						Data: data,
-					}
+		r.clients[key] = c
+
+		// 🔴 NOW BUILD SNAPSHOT
+		if BuildPollSnapshot != nil {
+			data, err := BuildPollSnapshot(c.sess)
+			if err == nil {
+				r.hydrateVotes(data)
+				c.send <- Envelope{
+					Type: EventPollState,
+					Data: data,
 				}
 			}
+		}
 
-			r.schedulePresence()
+		r.schedulePresence()
+
 
 		// ---------- LEAVE ----------
 		case c := <-r.leave:

@@ -20,18 +20,7 @@ func getCollection() *mongo.Collection {
 	return db.DB.Collection("polls")
 }
 
-func PollHasVotes(ctx context.Context, pollID string) (bool, error) {
 
-	count, err := getCollection().CountDocuments(ctx, bson.M{
-		"poll_id": pollID,
-	})
-
-	if err != nil {
-		return false, err
-	}
-
-	return count > 0, nil
-}
 
 
 func GetPollByIDRaw(ctx context.Context, pollID string) (*models.Poll, error) {

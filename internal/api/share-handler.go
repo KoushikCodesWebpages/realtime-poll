@@ -50,6 +50,7 @@ func GenerateShareLink(c *gin.Context) {
 		"mode":      mode,
 	})
 }
+
 func ViewSharedPoll(c *gin.Context) {
 
 	ctx := c.Request.Context()

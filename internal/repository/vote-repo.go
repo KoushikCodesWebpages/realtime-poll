@@ -16,6 +16,18 @@ import (
 func voteCollection() *mongo.Collection {
 	return db.DB.Collection("votes")
 }
+func PollHasVotes(ctx context.Context, pollID string) (bool, error) {
+
+	count, err := voteCollection().CountDocuments(ctx, bson.M{
+		"poll_id": pollID,
+	})
+
+	if err != nil {
+		return false, err
+	}
+
+	return count > 0, nil
+}
 
 func GetVoteForViewer(ctx context.Context, pollID, userID, sessionID string) (*models.VoteRecord, error) {
 
