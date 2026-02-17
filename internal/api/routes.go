@@ -56,6 +56,6 @@ func RegisterRoutes(r *gin.Engine) {
 	}
 
 	// ---------------- WEBSOCKET ----------------
-	r.GET("/ws/poll/:pollId", ServePollWS)
+	r.GET("/ws/poll/:poll_id", ServePollWS)
 	r.GET("/ws/token", middleware.RequireAuth(), GetWSToken)
 }

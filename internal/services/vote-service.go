@@ -142,13 +142,14 @@ func (s *VoteService) CastVote(
 		if err != nil {
 			return nil, apperror.Internal()
 		}
-		// realtime broadcast
+
 		ws.EmitVote(pollID, optionID, +1)
 
+		// IMPORTANT: user now HAS a vote
 		return &VoteResult{
 			Version:        version,
 			SelectedOption: optionID,
-			AlreadyVoted:   false,
+			AlreadyVoted:   true,
 			Changed:        false,
 		}, nil
 	}
@@ -160,14 +161,11 @@ func (s *VoteService) CastVote(
 
 	// ===== Already voted =====
 	existing, err := repository.GetVoteByIdentity(ctx, pollID, identity)
-	if err != nil {
-		return nil, apperror.Internal()
-	}
-	if existing == nil {
+	if err != nil || existing == nil {
 		return nil, apperror.Internal()
 	}
 
-	// ===== No change allowed =====
+	// ===== Change not allowed =====
 	if !poll.Vote.AllowChangeVote {
 		return &VoteResult{
 			Version:        poll.State.Version,
@@ -177,7 +175,7 @@ func (s *VoteService) CastVote(
 		}, nil
 	}
 
-	// ===== Same option clicked again =====
+	// ===== Same option clicked =====
 	if existing.OptionID == optionID {
 		return &VoteResult{
 			Version:        poll.State.Version,
@@ -189,25 +187,23 @@ func (s *VoteService) CastVote(
 
 	// ===== Change vote =====
 
-	// decrement old
+	// decrement old option
 	if _, err := repository.IncrementOptionVote(ctx, pollID, existing.OptionID, -1); err != nil {
 		return nil, apperror.Internal()
 	}
+	ws.EmitVote(pollID, existing.OptionID, -1)
 
-	// increment new
+	// increment new option
 	version, err := repository.IncrementOptionVote(ctx, pollID, optionID, 1)
 	if err != nil {
 		return nil, apperror.Internal()
 	}
+	ws.EmitVote(pollID, optionID, +1)
 
 	// update record
 	if err := repository.UpdateVoteOption(ctx, existing.VoteID, optionID); err != nil {
 		return nil, apperror.Internal()
 	}
-
-	// realtime broadcasts
-	ws.EmitVote(pollID, existing.OptionID, -1)
-	ws.EmitVote(pollID, optionID, +1)
 
 	return &VoteResult{
 		Version:        version,

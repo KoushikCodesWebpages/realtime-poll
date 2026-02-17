@@ -33,6 +33,7 @@ func main() {
 	db.Connect()
 		// connect realtime lifecycle hook
 	ws.OnPollExpired = services.HandlePollExpired
+	ws.BuildPollSnapshot = services.BuildPollSnapshot
 
 	debug := os.Getenv("DEBUG") == "true"
 

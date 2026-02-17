@@ -183,6 +183,21 @@ func (s *PollGetService) GetMyPollsPaginated(
 		return nil, apperror.Internal()
 	}
 
+	// -------- FIX TOTAL VOTES --------
+	updates := make(map[string]int64)
+
+	for i := range polls {
+		calculated := utils.CalculateTotalVotes(&polls[i])
+
+		if int64(polls[i].Meta.TotalVotes) != calculated {
+			polls[i].Meta.TotalVotes = int(calculated)
+			updates[polls[i].PollID] = calculated
+		}
+	}
+
+	// async safe write (non-blocking correctness)
+	go repository.UpdatePollsTotalVotesBulk(context.Background(), updates)
+
 	total, err := repository.CountPollsByOwner(ctx, userID)
 	if err != nil {
 		return nil, apperror.Internal()
@@ -213,6 +228,7 @@ func (s *PollGetService) GetMyPollsPaginated(
 		Total: total,
 	}, nil
 }
+
 
 func (s *PollGetService) GetMyPolls(ctx context.Context, userID string) ([]models.Poll, error) {
 
@@ -249,7 +265,7 @@ func (s *PollSingleService) GetPoll(
 		}
 	}
 
-	// owner only (for now)
+	// owner only
 	if poll.OwnerID != userID {
 		return nil, &apperror.AppError{
 			Code:    apperror.USER_FORBIDDEN,
@@ -262,8 +278,20 @@ func (s *PollSingleService) GetPoll(
 		poll.State.IsClosed = true
 	}
 
+	// -------- FIX TOTAL VOTES --------
+	calculated := utils.CalculateTotalVotes(poll)
+
+	if poll.Meta.TotalVotes != int(calculated) {
+		poll.Meta.TotalVotes = int(calculated)
+
+		// only write when needed (important for performance)
+		_ = repository.UpdatePollTotalVotes(ctx, poll.PollID, calculated)
+	}
+
 	return poll, nil
 }
+
+
 type PollCreateService struct{}
 
 func (s *PollCreateService) CreatePoll(
@@ -273,14 +301,41 @@ func (s *PollCreateService) CreatePoll(
 	req dto.CreatePollReq,
 ) (*models.Poll, error) {
 
-	// ---------- AUTH ----------
+	// ============================================================
+	// AUTH
+	// ============================================================
 	if userID == "" {
 		return nil, apperror.Unauthorized()
 	}
 
 	now := time.Now().UTC()
 
-	// ---------- TIME VALIDATION ----------
+	// ============================================================
+	// DEFAULTS (SERVER AUTHORITATIVE)
+	// ============================================================
+
+	// ----- visibility default -----
+	if strings.TrimSpace(req.Visibility) == "" {
+		req.Visibility = "public"
+	}
+
+	// ----- votes default -----
+	if req.MaxVotesPerUser <= 0 {
+		req.MaxVotesPerUser = 1
+	}
+
+	// requireLogin derived from visibility
+	requireLogin := req.Visibility != "public"
+
+		// If hide results -> disable live results
+	if req.HideResultsUntilEnd {
+		req.ShowLiveResults = false
+	} else {
+		req.ShowLiveResults = true
+	}
+	// ============================================================
+	// TIME VALIDATION
+	// ============================================================
 	if req.StartAt != nil && req.EndAt != nil {
 		if req.EndAt.Before(*req.StartAt) {
 			return nil, &apperror.AppError{
@@ -290,38 +345,51 @@ func (s *PollCreateService) CreatePoll(
 		}
 	}
 
-	// ---------- OPTIONS ----------
+	// ============================================================
+	// OPTIONS VALIDATION
+	// ============================================================
 	if len(req.Options) < 2 {
 		return nil, apperror.Validation("minimum 2 options required")
 	}
 
 	options := make([]models.Option, 0, len(req.Options))
 	for _, opt := range req.Options {
+
+		text := strings.TrimSpace(opt)
+		if text == "" {
+			continue
+		}
+
 		options = append(options, models.Option{
 			OptionID: uuid.NewString(),
-			Text:     strings.TrimSpace(opt),
+			Text:     text,
 			Votes:    0,
 		})
 	}
 
-	// ---------- VISIBILITY ----------
-	requireLogin := req.Visibility != "public"
+	if len(options) < 2 {
+		return nil, apperror.Validation("minimum 2 valid options required")
+	}
 
-	// link polls get share id
+	// ============================================================
+	// DISTRIBUTION (share link polls)
+	// ============================================================
 	shareID := ""
 	if req.Visibility == "link" {
 		shareID = uuid.NewString()[:8]
 	}
 
-	// ---------- BUILD POLL ----------
+	// ============================================================
+	// BUILD POLL DOCUMENT
+	// ============================================================
 	poll := &models.Poll{
 		PollID:  uuid.NewString(),
 		OwnerID: userID,
 
 		// ================= CONTENT =================
 		Content: models.ContentSettings{
-			Question:    req.Question,
-			Description: req.Description,
+			Question:    strings.TrimSpace(req.Question),
+			Description: strings.TrimSpace(req.Description),
 			Options:     options,
 
 			Images:      req.Images,
@@ -333,12 +401,12 @@ func (s *PollCreateService) CreatePoll(
 		Access: models.AccessSettings{
 			Visibility:    req.Visibility,
 			AllowedEmails: req.AllowedEmails,
-			RequireLogin:  requireLogin,
+			RequireLogin:  requireLogin, // derived
 		},
 
 		// ================= VOTE =================
 		Vote: models.VoteSettings{
-			MaxVotesPerUser: req.MaxVotesPerUser,
+			MaxVotesPerUser: req.MaxVotesPerUser, // default applied
 			AllowChangeVote: req.AllowChange,
 			AnonymousVote:   req.Anonymous,
 			HideResults:     req.HideResultsUntilEnd,
@@ -355,11 +423,11 @@ func (s *PollCreateService) CreatePoll(
 
 		// ================= BEHAVIOR =================
 		Behavior: models.BehaviorSettings{
-			StartAt:          req.StartAt,
-			EndAt:            req.EndAt,
-			AutoClose:        req.AutoClose,
-			ShowLiveResults:  req.ShowLiveResults,
-			NotifyOwner:      req.NotifyOwnerOnVote,
+			StartAt:         req.StartAt,
+			EndAt:           req.EndAt,
+			AutoClose:       req.AutoClose,
+			ShowLiveResults: req.ShowLiveResults,
+			NotifyOwner:     req.NotifyOwnerOnVote,
 		},
 
 		// ================= ANALYTICS =================
@@ -386,11 +454,13 @@ func (s *PollCreateService) CreatePoll(
 			LastVote:   nil,
 			TotalVotes: 0,
 			TotalViews: 0,
-			ExpiresAt:  req.EndAt, // derived from behavior
+			ExpiresAt:  req.EndAt,
 		},
 	}
 
-	// ---------- INSERT ----------
+	// ============================================================
+	// INSERT
+	// ============================================================
 	if err := repository.CreatePoll(ctx, poll); err != nil {
 		return nil, apperror.Internal()
 	}

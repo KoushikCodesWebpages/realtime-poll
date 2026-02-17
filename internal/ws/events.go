@@ -19,3 +19,10 @@ type internalEvent struct {
 	Type EventType
 	Data any
 }
+
+type voteDelta struct {
+	OptionID string
+	Delta    int
+}
+
+const EventPresence EventType = "presence"

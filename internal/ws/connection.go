@@ -2,14 +2,16 @@ package ws
 
 import (
 	"github.com/gorilla/websocket"
+	"sync"
 )
 
 type Connection struct {
 	ws   *websocket.Conn
 	send chan Envelope
 	sess *Session
-}
 
+	closeOnce sync.Once
+}
 func newConnection(ws *websocket.Conn, sess *Session) *Connection {
 	return &Connection{
 		ws:   ws,
@@ -18,15 +20,36 @@ func newConnection(ws *websocket.Conn, sess *Session) *Connection {
 	}
 }
 
-func (c *Connection) writePump() {
-	defer c.ws.Close()
+// READ LOOP — detects disconnects
+func (c *Connection) readPump(r *Room) {
+	defer func() {
+		r.leave <- c
+	}()
 
-	for msg := range c.send {
-		_ = c.ws.WriteJSON(msg)
+	for {
+		if _, _, err := c.ws.ReadMessage(); err != nil {
+			break
+		}
 	}
 }
 
+// WRITE LOOP
+func (c *Connection) writePump(r *Room) {
+	defer func() {
+		r.leave <- c
+	}()
+
+	for msg := range c.send {
+		if err := c.ws.WriteJSON(msg); err != nil {
+			break
+		}
+	}
+}
+
+
 func (c *Connection) close() {
-	close(c.send)
-	c.ws.Close()
+	c.closeOnce.Do(func() {
+		close(c.send)
+		c.ws.Close()
+	})
 }

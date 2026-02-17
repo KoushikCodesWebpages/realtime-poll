@@ -305,3 +305,30 @@ func ClosePoll(ctx context.Context, pollID string) error {
 
 	return err
 }
+
+func UpdatePollTotalVotes(ctx context.Context, pollID string, total int64) error {
+	_, err := getCollection().UpdateOne(ctx,
+		bson.M{"_id": pollID},
+		bson.M{"$set": bson.M{"meta.total_votes": total}},
+	)
+	return err
+}
+
+func UpdatePollsTotalVotesBulk(ctx context.Context, updates map[string]int64) error {
+
+	if len(updates) == 0 {
+		return nil
+	}
+
+	models := make([]mongo.WriteModel, 0, len(updates))
+
+	for id, total := range updates {
+		models = append(models, mongo.NewUpdateOneModel().
+			SetFilter(bson.M{"_id": id}).
+			SetUpdate(bson.M{"$set": bson.M{"meta.total_votes": total}}),
+		)
+	}
+
+	_, err := getCollection().BulkWrite(ctx, models)
+	return err
+}
