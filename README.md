@@ -1,73 +1,134 @@
-# Realtime Poll
+# ⚡ Realtime Poll
 
-A modern realtime polling platform built with **Go + WebSockets + React**.
+Live voting. Zero refresh. Instant feedback.
 
-This application allows users to create live polls, share them instantly, and watch votes update in realtime across all connected clients.
-
-Unlike traditional polling apps that rely on refresh cycles, Realtime Poll streams vote updates live using persistent connections.
+A modern realtime polling platform built with **Go + WebSockets + React** where every vote appears instantly across all connected viewers.
 
 ---
 
-## ✨ Features
+## 🧭 How it works (User Flow)
 
-### Core
+### 1️⃣ Create a poll
 
-* Create polls with multiple options
-* Public shareable voting links
-* Realtime vote updates (WebSocket powered)
-* Viewer presence count
-* Automatic poll closing
-* Anonymous or authenticated voting
+Create a question and options.
 
-### Access Control
+```
+"Best backend language?"
+- Go
+- Node
+- Rust
+- Python
+```
 
-* Public polls
-* Login-required polls
-* Whitelisted email polls
-* Single-vote enforcement
-* Vote change control
-
-### Share Mode
-
-* Dedicated share link viewer
-* Voting without account (if allowed)
-* Live result streaming
-* Access-restricted UI states
-
-### Realtime Engine
-
-* WebSocket rooms per poll
-* Incremental vote updates (delta updates)
-* Snapshot recovery
-* Automatic cleanup
-* Poll expiration events
-
-### Security
-
-* HTTP-only session cookies
-* Cross-site secure authentication
-* Token-based share access
-* Rate-safe vote handling
+📷 `docs/create.png`
 
 ---
 
-## 🧠 Architecture
+### 2️⃣ Share the link
 
-Frontend and backend are completely decoupled and communicate via HTTP + WebSocket.
+Send the generated link anywhere.
 
 ```
-React SPA
-   ↓ REST
-Go API
-   ↓
-MongoDB
-
-Realtime channel:
-Client ⇄ WebSocket ⇄ Poll Room ⇄ Broadcast ⇄ All viewers
+https://live-poll.clqit.in/share/ABC123
 ```
 
-The backend is responsible for truth state.
-The frontend only renders streamed state.
+📷 `docs/share.png`
+
+Messaging apps automatically show a preview card.
+
+---
+
+### 3️⃣ People vote
+
+Users open the link and vote instantly.
+
+📷 `docs/vote.png`
+
+No refresh required.
+No login required (optional restriction supported).
+
+---
+
+### 4️⃣ Watch results live
+
+Every connected device updates in real time.
+
+📷 `docs/live.png`
+
+Votes stream instantly using WebSockets.
+
+---
+
+## 🧠 System Concept
+
+Traditional polling:
+
+```
+vote → save → refresh → see result
+```
+
+Realtime Poll:
+
+```
+vote → broadcast → everyone explaining "whoa"
+```
+
+---
+
+## 🔄 Realtime Engine
+
+The app uses a hybrid model:
+
+| Event | Behavior      |
+| ----- | ------------- |
+| Join  | full snapshot |
+| Vote  | delta update  |
+| Close | final state   |
+
+This avoids desync and minimizes bandwidth.
+
+---
+
+## 🔐 Access Control
+
+Polls can require different levels of permission:
+
+| Mode      | Behavior                 |
+| --------- | ------------------------ |
+| Public    | anyone can vote          |
+| Login     | authenticated users only |
+| Whitelist | specific emails only     |
+| Read-only | results view only        |
+
+UI automatically adapts based on viewer capability.
+
+---
+
+## 🧩 Architecture Overview
+
+```
+           ┌────────────┐
+           │   React    │
+           │   Client   │
+           └─────┬──────┘
+                 │ REST
+                 ▼
+           ┌────────────┐
+           │    Go API  │
+           └─────┬──────┘
+                 │
+         ┌───────┴────────┐
+         │                 │
+         ▼                 ▼
+   MongoDB           WebSocket Hub
+                           │
+                    Poll Rooms (per poll)
+                           │
+                     Broadcast events
+```
+
+Frontend renders state.
+Backend owns truth.
 
 ---
 
@@ -77,7 +138,7 @@ The frontend only renders streamed state.
 
 * Go (Gin)
 * MongoDB
-* Native WebSocket server
+* Native WebSocket engine
 * Cookie session authentication
 
 ### Frontend
@@ -87,68 +148,42 @@ The frontend only renders streamed state.
 * Axios
 * TailwindCSS
 
-### Infrastructure
-
-* VPS hosted API
-* Netlify frontend
-* Secure cross-site cookies
-
 ---
 
-## 🔄 Realtime Model
+## 🌐 Share Links & Preview Cards
 
-The system uses a **state + delta hybrid model**:
+When a poll is shared:
 
-* Initial join → snapshot
-* Vote → delta broadcast
-* Poll end → state event
+```
+/share/<token>
+```
 
-This prevents desync and minimizes bandwidth.
+Messaging platforms fetch dynamic metadata:
+
+* Title
+* Description
+* Generated preview image
+
+No JavaScript required.
 
 ---
 
 ## 🔐 Authentication
 
-Authentication uses secure server-stored sessions.
+Sessions are server-managed.
 
 Cookies:
 
 * HttpOnly
 * Secure
 * SameSite=None
-* Cross-subdomain enabled
+* Cross-subdomain safe
 
-No tokens are stored in localStorage.
-
----
-
-## 🔗 Share Links
-
-Each poll generates a public access token.
-
-Example:
-
-```
-/share/<token>
-```
-
-The server resolves the token → poll → permissions → viewer capabilities.
+No localStorage tokens.
 
 ---
 
-## 🖼 Link Preview Support
-
-The backend dynamically serves Open Graph metadata for share links so messaging platforms (WhatsApp, Discord, Telegram) display rich previews.
-
-Preview includes:
-
-* Poll question
-* Preview image
-* Voting call-to-action
-
----
-
-## 🚀 Running Locally
+## 🚀 Run Locally
 
 ### Backend
 
@@ -166,37 +201,27 @@ npm run dev
 
 ---
 
-## ⚠️ License & Usage
+## 📖 Intended Purpose
 
-This project is **source-available**, not open-source.
+This project is shared for **learning and reference**.
 
-You are allowed to:
+You may:
 
-* Read the code
-* Learn from the implementation
-* Reference architectural ideas
+* Study the architecture
+* Understand realtime patterns
+* Explore implementation ideas
 
-You are NOT allowed to:
+You may NOT:
 
-* Copy the code
-* Re-publish the project
-* Deploy it yourself
-* Use it commercially
-* Use it for personal hosted services
-* Create derivative works
+* Rehost the service
+* Copy the codebase
+* Use commercially
+* Create derivative deployments
 
-Ownership and rights remain with the original author.
+All rights remain with the author.
 
 ---
 
-## 📌 Notes
-
-This repository is shared for educational and demonstration purposes only.
-
-The author may modify or revoke access at any time.
-
----
-
-## Author
+## 👤 Author
 
 Koushik Babu
