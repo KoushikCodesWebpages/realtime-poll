@@ -159,3 +159,25 @@ func GetVoteByIdentity(ctx context.Context, pollID, identity string) (*models.Vo
 	}
 	return &vote, nil
 }
+
+func FindVote(ctx context.Context, pollID, userID, sessionID string) (*models.Vote, error) {
+
+	filter := bson.M{
+		"poll_id": pollID,
+	}
+
+	// priority: logged-in identity
+	if userID != "" {
+		filter["user_id"] = userID
+	} else {
+		filter["session_id"] = sessionID
+	}
+
+	var vote models.Vote
+	err := getCollection().FindOne(ctx, filter).Decode(&vote)
+	if err != nil {
+		return nil, nil // no vote found is NOT an error
+	}
+
+	return &vote, nil
+}

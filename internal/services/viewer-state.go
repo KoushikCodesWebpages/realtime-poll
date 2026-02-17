@@ -9,47 +9,62 @@ import (
 )
 
 type ViewerState struct {
-	CanVote        bool   `json:"can_vote"`
-	CanViewResults bool   `json:"can_view_results"`
-	VotedOptionID  string `json:"voted_option_id,omitempty"`
-	Started        bool   `json:"started"`
-	Ended          bool   `json:"ended"`
+    AlreadyVoted   bool
+    CanVote        bool
+    CanViewResults bool
+    Changed        bool
+    VotedOptionID  string
+    Started        bool
+    Ended          bool
 }
 
-func BuildViewerState(ctx context.Context, poll *models.Poll, userID, sessionID string) (*ViewerState, error) {
+func BuildViewerState(
+    ctx context.Context,
+    poll *models.Poll,
+    userID string,
+    sessionID string,
+) (*ViewerState, error) {
 
-	now := time.Now()
+    now := time.Now()
 
-	started := poll.Behavior.StartAt == nil || now.After(*poll.Behavior.StartAt)
-	ended := poll.Behavior.EndAt != nil && now.After(*poll.Behavior.EndAt)
+    started := poll.Behavior.StartAt == nil || now.After(*poll.Behavior.StartAt)
+    ended   := poll.State.IsClosed || (poll.Behavior.EndAt != nil && now.After(*poll.Behavior.EndAt))
 
-	canVote := started && !ended
+    viewer := &ViewerState{
+        Started: started,
+        Ended:   ended,
+    }
 
-	if poll.Access.Visibility == "authenticated" && userID == "" {
-		canVote = false
-	}
+    vote, _ := repository.FindVote(ctx, poll.PollID, userID, sessionID)
 
-	if poll.Access.Visibility == "whitelist" && userID == "" {
-		canVote = false
-	}
+    if vote != nil {
+        viewer.AlreadyVoted  = true
+        viewer.VotedOptionID = vote.OptionID
+    }
 
-	vote, _ := repository.GetVoteForViewer(ctx, poll.PollID, userID, sessionID)
+    // Can view results
+    viewer.CanViewResults =
+        poll.Behavior.ShowLiveResults ||
+        ended ||
+        viewer.AlreadyVoted
 
-	voted := ""
-	if vote != nil {
-		voted = vote.OptionID
-		if !poll.Vote.AllowChangeVote {
-			canVote = false
-		}
-	}
+    // Can vote logic
+    if !started || ended {
+        viewer.CanVote = false
+        return viewer, nil
+    }
 
-	canViewResults := !poll.Vote.HideResults || ended || poll.Behavior.ShowLiveResults
+    if viewer.AlreadyVoted {
+        if poll.Vote.AllowChangeVote {
+            viewer.CanVote = true
+            viewer.Changed = true
+        } else {
+            viewer.CanVote = false
+        }
+        return viewer, nil
+    }
 
-	return &ViewerState{
-		CanVote:        canVote,
-		CanViewResults: canViewResults,
-		VotedOptionID:  voted,
-		Started:        started,
-		Ended:          ended,
-	}, nil
+    viewer.CanVote = true
+    return viewer, nil
 }
+

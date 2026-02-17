@@ -6,6 +6,49 @@ import (
 	"realtime-poll/internal/models"
 )
 
+type EditPollReq struct {
+	Content  *EditContent  `json:"content"`
+	Access   *EditAccess   `json:"access"`
+	Vote     *EditVote     `json:"vote"`
+	Behavior *EditBehavior `json:"behavior"`
+}
+
+type EditContent struct {
+	Question    *string       `json:"question,omitempty"`
+	Description *string       `json:"description,omitempty"`
+	Options     []EditOption  `json:"options,omitempty"`
+
+	AllowCustomOption *bool `json:"allow_custom_option,omitempty"`
+	RandomizeOptions  *bool `json:"randomize_options,omitempty"`
+}
+
+type EditOption struct {
+	OptionID string `json:"option_id"`
+	Text     string `json:"text"`
+}
+
+type EditAccess struct {
+	Visibility    *string  `json:"visibility,omitempty"`   // public | authenticated | whitelist | link
+	AllowedEmails []string `json:"allowed_emails,omitempty"`
+}
+
+type EditVote struct {
+	MaxVotesPerUser   *int  `json:"max_votes_per_user,omitempty"`
+	AllowChangeVote   *bool `json:"allow_change_vote,omitempty"`
+	AnonymousVote     *bool `json:"anonymous_vote,omitempty"`
+	HideResultsUntilEnd *bool `json:"hide_results_until_end,omitempty"`
+	ShowVoters        *bool `json:"show_voters,omitempty"`
+	UniqueIP          *bool `json:"unique_ip,omitempty"`
+	UniqueSession     *bool `json:"unique_session,omitempty"`
+}
+
+type EditBehavior struct {
+	StartAt         *time.Time `json:"start_at,omitempty"`
+	EndAt           *time.Time `json:"end_at,omitempty"`
+	AutoClose       *bool      `json:"auto_close,omitempty"`
+	ShowLiveResults *bool      `json:"show_live_results,omitempty"`
+	NotifyOwner     *bool      `json:"notify_owner_on_vote,omitempty"`
+}
 
 
 type VoteUpdate struct {

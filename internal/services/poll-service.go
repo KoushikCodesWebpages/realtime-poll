@@ -22,9 +22,14 @@ import (
 
 type PollEditService struct{}
 
+func (s *PollEditService) PatchPoll(
+	ctx context.Context,
+	userID string,
+	pollID string,
+	req dto.EditPollReq,
+) error {
 
-func (s *PollEditService) PatchPoll(ctx context.Context, userID, pollID string, update bson.M) error {
-
+	// ================= LOAD =================
 	poll, err := repository.GetPollByID(ctx, pollID)
 	if err != nil {
 		return apperror.Internal()
@@ -36,6 +41,7 @@ func (s *PollEditService) PatchPoll(ctx context.Context, userID, pollID string, 
 		}
 	}
 
+	// ================= AUTH =================
 	if poll.OwnerID != userID {
 		return &apperror.AppError{
 			Code:    apperror.USER_FORBIDDEN,
@@ -50,21 +56,36 @@ func (s *PollEditService) PatchPoll(ctx context.Context, userID, pollID string, 
 		}
 	}
 
-	if poll.Meta.TotalVotes > 0 {
+	hasVotes, err := repository.PollHasVotes(ctx, pollID)
+	if err != nil {
+		return apperror.Internal()
+	}
+
+	if hasVotes {
 		return &apperror.AppError{
 			Code:    apperror.POLL_VOTING_STARTED,
 			Message: "Poll already has votes",
 		}
 	}
 
-	update["meta.updated_at"] = time.Now()
+	// ================= APPLY EDIT =================
+	changed := repository.ApplyEdit(poll, req)
 
-	if err := repository.UpdatePollFields(ctx, pollID, update); err != nil {
+	if !changed {
+		return apperror.Validation("nothing to update")
+	}
+
+	// update meta
+	poll.Meta.UpdatedAt = time.Now()
+
+	// ================= SAVE =================
+	if err := repository.ReplacePoll(ctx, pollID, poll); err != nil {
 		return apperror.Internal()
 	}
 
 	return nil
 }
+
 
 func (s *PollEditService) PutPoll(ctx context.Context, userID, pollID string, update bson.M) error {
 
@@ -183,21 +204,6 @@ func (s *PollGetService) GetMyPollsPaginated(
 		return nil, apperror.Internal()
 	}
 
-	// -------- FIX TOTAL VOTES --------
-	updates := make(map[string]int64)
-
-	for i := range polls {
-		calculated := utils.CalculateTotalVotes(&polls[i])
-
-		if int64(polls[i].Meta.TotalVotes) != calculated {
-			polls[i].Meta.TotalVotes = int(calculated)
-			updates[polls[i].PollID] = calculated
-		}
-	}
-
-	// async safe write (non-blocking correctness)
-	go repository.UpdatePollsTotalVotesBulk(context.Background(), updates)
-
 	total, err := repository.CountPollsByOwner(ctx, userID)
 	if err != nil {
 		return nil, apperror.Internal()
@@ -228,7 +234,6 @@ func (s *PollGetService) GetMyPollsPaginated(
 		Total: total,
 	}, nil
 }
-
 
 func (s *PollGetService) GetMyPolls(ctx context.Context, userID string) ([]models.Poll, error) {
 
@@ -392,7 +397,6 @@ func (s *PollCreateService) CreatePoll(
 			Description: strings.TrimSpace(req.Description),
 			Options:     options,
 
-			Images:      req.Images,
 			AllowCustom: req.AllowCustomOption,
 			Randomize:   req.RandomizeOptions,
 		},
@@ -466,4 +470,50 @@ func (s *PollCreateService) CreatePoll(
 	}
 
 	return poll, nil
+}
+
+
+func BuildPollUpdate(update bson.M) bson.M {
+
+	out := bson.M{}
+
+	// declare first so recursion works
+	var setNested func(prefix string, m map[string]interface{})
+
+	setNested = func(prefix string, m map[string]interface{}) {
+		for k, v := range m {
+
+			key := prefix + "." + k
+
+			switch val := v.(type) {
+
+			case map[string]interface{}:
+				setNested(key, val)
+
+			case bson.M:
+				setNested(key, map[string]interface{}(val))
+
+			default:
+				out[key] = v
+			}
+		}
+	}
+
+	for k, v := range update {
+
+		switch val := v.(type) {
+
+		case map[string]interface{}:
+			setNested(k, val)
+
+		case bson.M:
+			setNested(k, map[string]interface{}(val))
+
+		// 🚨 ignore root primitive writes
+		default:
+			continue
+		}
+	}
+
+	return out
 }

@@ -5,12 +5,12 @@ import (
 	"net/http"
 	"time"
 	"strconv"
-	"strings"
+
 
 	"realtime-poll/internal/dto"
 	"realtime-poll/internal/services"
 	"realtime-poll/internal/constants"
-	"realtime-poll/internal/utils"
+	"realtime-poll/internal/middleware"
 
 	"github.com/gin-gonic/gin"
 )
@@ -21,56 +21,17 @@ func PatchPoll(c *gin.Context) {
 	pollID := c.Param("poll_id")
 	userID := c.GetString(constants.CtxUserID)
 
-	// 1️⃣ parse json
-	var body map[string]interface{}
+	var body dto.EditPollReq
 	if err := c.ShouldBindJSON(&body); err != nil {
-		c.JSON(400, gin.H{"issue": "invalid json"})
+		c.JSON(400, gin.H{"issue": "invalid body"})
 		return
 	}
 
-	// 2️⃣ flatten nested json -> mongo dot notation
-	flat := map[string]interface{}{}
-	utils.Flatten("", body, flat)
-
-	// 3️⃣ protect immutable / system fields
-	protected := []string{
-		"poll_id",
-		"owner_id",
-
-		"meta.created_at",
-		"meta.updated_at",
-		"meta.total_votes",
-		"meta.total_views",
-		"meta.last_vote",
-		"meta.expires_at",
-
-		"state.version",
-		"state.is_deleted",
-
-		"analytics.track_views",
-		"analytics.track_voters",
-	}
-
-	for _, p := range protected {
-		delete(flat, p)
-	}
-
-	// prevent vote tampering (no manual vote injection)
-	for key := range flat {
-		if strings.Contains(key, "votes") {
-			delete(flat, key)
-		}
-	}
-
-	// 4️⃣ always update timestamp
-	flat["meta.updated_at"] = time.Now()
-
-	// 5️⃣ call service with FLAT map
 	service := services.PollEditService{}
-	err := service.PatchPoll(c.Request.Context(), userID, pollID, flat)
+	err := service.PatchPoll(c.Request.Context(), userID, pollID, body)
 
 	if err != nil {
-		c.JSON(400, gin.H{"issue": err.Error()})
+		middleware.Fail(c, err)
 		return
 	}
 
@@ -188,6 +149,7 @@ func parsePollFilter(c *gin.Context) dto.PollFilter {
 		Limit:      limit,
 	}
 }
+
 func CreatePoll(c *gin.Context) {
 
 	var req dto.CreatePollReq

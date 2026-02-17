@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"time"
+	"strings"
+
+	"github.com/google/uuid"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.mongodb.org/mongo-driver/bson"
@@ -16,6 +19,20 @@ import (
 func getCollection() *mongo.Collection {
 	return db.DB.Collection("polls")
 }
+
+func PollHasVotes(ctx context.Context, pollID string) (bool, error) {
+
+	count, err := getCollection().CountDocuments(ctx, bson.M{
+		"poll_id": pollID,
+	})
+
+	if err != nil {
+		return false, err
+	}
+
+	return count > 0, nil
+}
+
 
 func GetPollByIDRaw(ctx context.Context, pollID string) (*models.Poll, error) {
 
@@ -332,3 +349,176 @@ func UpdatePollsTotalVotesBulk(ctx context.Context, updates map[string]int64) er
 	_, err := getCollection().BulkWrite(ctx, models)
 	return err
 }
+
+
+func ReplacePoll(ctx context.Context, pollID string, poll *models.Poll) error {
+	_, err := getCollection().ReplaceOne(
+		ctx,
+		bson.M{"poll_id": pollID},
+		poll,
+	)
+	return err
+}
+
+
+func ApplyEdit(poll *models.Poll, req dto.EditPollReq) bool {
+
+	changed := false
+
+	// =====================================================
+	// CONTENT
+	// =====================================================
+	if req.Content != nil {
+
+		if req.Content.Question != nil &&
+			strings.TrimSpace(*req.Content.Question) != poll.Content.Question {
+
+			poll.Content.Question = strings.TrimSpace(*req.Content.Question)
+			changed = true
+		}
+
+		if req.Content.Description != nil &&
+			strings.TrimSpace(*req.Content.Description) != poll.Content.Description {
+
+			poll.Content.Description = strings.TrimSpace(*req.Content.Description)
+			changed = true
+		}
+
+		// ----- OPTIONS (CRITICAL PART) -----
+		if req.Content.Options != nil {
+
+			oldOptions := poll.Content.Options
+			newOptions := []models.Option{}
+
+			// map existing options by id
+			oldMap := map[string]models.Option{}
+			for _, o := range oldOptions {
+				oldMap[o.OptionID] = o
+			}
+
+			for _, incoming := range req.Content.Options {
+
+				text := strings.TrimSpace(incoming.Text)
+				if text == "" {
+					continue
+				}
+
+				// existing option (keep votes)
+				if incoming.OptionID != "" {
+					if old, ok := oldMap[incoming.OptionID]; ok {
+
+						if old.Text != text {
+							old.Text = text
+							changed = true
+						}
+
+						newOptions = append(newOptions, old)
+						continue
+					}
+				}
+
+				// new option
+				newOptions = append(newOptions, models.Option{
+					OptionID: uuid.NewString(),
+					Text:     text,
+					Votes:    0,
+				})
+				changed = true
+			}
+
+			// detect removed options
+			if len(newOptions) != len(oldOptions) {
+				changed = true
+			}
+
+			poll.Content.Options = newOptions
+		}
+
+		if req.Content.AllowCustomOption != nil &&
+			*req.Content.AllowCustomOption != poll.Content.AllowCustom {
+
+			poll.Content.AllowCustom = *req.Content.AllowCustomOption
+			changed = true
+		}
+
+		if req.Content.RandomizeOptions != nil &&
+			*req.Content.RandomizeOptions != poll.Content.Randomize {
+
+			poll.Content.Randomize = *req.Content.RandomizeOptions
+			changed = true
+		}
+	}
+
+	// =====================================================
+	// ACCESS
+	// =====================================================
+	if req.Access != nil {
+
+		if req.Access.Visibility != nil &&
+			*req.Access.Visibility != poll.Access.Visibility {
+
+			poll.Access.Visibility = *req.Access.Visibility
+			poll.Access.RequireLogin = *req.Access.Visibility != "public"
+			changed = true
+		}
+
+		if req.Access.AllowedEmails != nil {
+			poll.Access.AllowedEmails = req.Access.AllowedEmails
+			changed = true
+		}
+	}
+
+	// =====================================================
+	// VOTE
+	// =====================================================
+	if req.Vote != nil {
+
+		setBool := func(ptr *bool, target *bool) {
+			if ptr != nil && *ptr != *target {
+				*target = *ptr
+				changed = true
+			}
+		}
+
+		setBool(req.Vote.AllowChangeVote, &poll.Vote.AllowChangeVote)
+		setBool(req.Vote.AnonymousVote, &poll.Vote.AnonymousVote)
+		setBool(req.Vote.HideResultsUntilEnd, &poll.Vote.HideResults)
+		setBool(req.Vote.ShowVoters, &poll.Vote.ShowVoters)
+		setBool(req.Vote.UniqueIP, &poll.Vote.UniqueIP)
+		setBool(req.Vote.UniqueSession, &poll.Vote.UniqueSession)
+	}
+
+	// =====================================================
+	// BEHAVIOR
+	// =====================================================
+	if req.Behavior != nil {
+
+		if req.Behavior.StartAt != nil {
+			poll.Behavior.StartAt = req.Behavior.StartAt
+			changed = true
+		}
+
+		if req.Behavior.EndAt != nil {
+			poll.Behavior.EndAt = req.Behavior.EndAt
+			poll.Meta.ExpiresAt = req.Behavior.EndAt
+			changed = true
+		}
+
+		if req.Behavior.AutoClose != nil &&
+			*req.Behavior.AutoClose != poll.Behavior.AutoClose {
+
+			poll.Behavior.AutoClose = *req.Behavior.AutoClose
+			changed = true
+		}
+
+		if req.Behavior.ShowLiveResults != nil &&
+			*req.Behavior.ShowLiveResults != poll.Behavior.ShowLiveResults {
+
+			poll.Behavior.ShowLiveResults = *req.Behavior.ShowLiveResults
+			changed = true
+		}
+	}
+
+	return changed
+}
+

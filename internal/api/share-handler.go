@@ -50,32 +50,33 @@ func GenerateShareLink(c *gin.Context) {
 		"mode":      mode,
 	})
 }
-
 func ViewSharedPoll(c *gin.Context) {
 
 	ctx := c.Request.Context()
 	token := c.Query("token")
 
-	sessionID, _ := c.Cookie("session_id")
+	incomingSessionID, _ := c.Cookie("session_id")
 
 	result, err := shareService.ViewSharedPoll(
 		ctx,
 		token,
 		c.ClientIP(),
-		sessionID,
+		incomingSessionID,
 	)
 	if err != nil {
 		middleware.Fail(c, err)
 		return
 	}
 
-	// if new session created → set cookie
-	if sessionID == "" && result.SessionID != "" {
+	// IMPORTANT: sync cookie with server session
+	if result.SessionID != "" && result.SessionID != incomingSessionID {
 		http.SetCookie(c.Writer, &http.Cookie{
 			Name:     "session_id",
 			Value:    result.SessionID,
 			Path:     "/",
 			HttpOnly: true,
+			SameSite:  http.SameSiteNoneMode,
+			Secure:   false, // true in production HTTPS
 			MaxAge:   int((30 * 24 * time.Hour).Seconds()),
 		})
 	}

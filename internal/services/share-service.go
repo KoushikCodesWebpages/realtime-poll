@@ -12,6 +12,7 @@ import (
 	"realtime-poll/internal/repository"
 	"realtime-poll/internal/utils"
 	"realtime-poll/internal/models"
+	"realtime-poll/internal/dto"
 )
 
 
@@ -63,17 +64,12 @@ func (s *ShareService) GenerateShareLink(
 }
 
 type SharedPollResult struct {
-	Poll   *models.Poll
-	UserID string
-	SessionID string
-	Viewer struct {
-		CanVote        bool
-		CanViewResults bool
-		VotedOptionID  string
-		Started        bool
-		Ended          bool
-	}
+	Poll      *models.Poll `json:"poll"`
+	UserID    string       `json:"user_id"`
+	SessionID string       `json:"session_id"`
+	Viewer    dto.SharedViewer `json:"viewer"`
 }
+
 
 func (s *ShareService) ViewSharedPoll(
 	ctx context.Context,
@@ -128,25 +124,36 @@ func (s *ShareService) ViewSharedPoll(
 	// -------- viewer state --------
 	viewer, _ := BuildViewerState(ctx, poll, userID, sessionID)
 
+	// hide results if not allowed
+	visiblePoll := poll
+	if !viewer.CanViewResults && !poll.Behavior.ShowLiveResults {
+		visiblePoll = utils.SanitizePollForViewer(poll)
+	}
+
 	result := &SharedPollResult{
-		Poll:      poll,
+		Poll:      visiblePoll,
 		UserID:    userID,
 		SessionID: sessionID,
 	}
-
+	
 	result.Viewer = struct {
-		CanVote        bool
-		CanViewResults bool
-		VotedOptionID  string
-		Started        bool
-		Ended          bool
+		AlreadyVoted   bool   `json:"already_voted"`
+		CanVote        bool   `json:"can_vote"`
+		CanViewResults bool   `json:"can_view_results"`
+		Changed        bool   `json:"changed"`
+		SelectedOption string `json:"selected_option"`
+		Started        bool   `json:"started"`
+		Ended          bool   `json:"ended"`
 	}{
+		viewer.AlreadyVoted,
 		viewer.CanVote,
 		viewer.CanViewResults,
+		viewer.Changed,
 		viewer.VotedOptionID,
 		viewer.Started,
 		viewer.Ended,
 	}
+
 
 	return result, nil
 }
