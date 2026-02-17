@@ -29,7 +29,7 @@ Create a question and options.
 Send the generated link anywhere.
 
 ```
-https://live-poll.clqit.in/share/ABC123
+https://live-poll.clqit.in/share?token=ABC123
 ```
 
 📷 `docs/share.png`
@@ -155,7 +155,7 @@ Backend owns truth.
 When a poll is shared:
 
 ```
-/share/<token>
+/share?token=<token>
 ```
 
 Messaging platforms fetch dynamic metadata:
